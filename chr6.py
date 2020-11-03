@@ -9,10 +9,51 @@ from pronto import Ontology
 REFERENCE_CHR = [str(i) for i in range(1, 23)] + ["X", "Y"]
 
 
+class ComparisonTable:
+    def __init__(self, raw):
+        self.raw = raw
+        self.ids = sorted(list(self.raw.keys()))
+        self.array = None
+
+    def tabulate(self):
+        table = {}
+        # self.
+
+    def make_array(table):
+        array = []
+        for pid in table:
+            values = []
+            for p2 in table:
+                if pid == p2:
+                    values.append(({}, 1, 1, {}, 1, 1))
+                elif p2 in table[pid]:
+                    values.append(table[pid][p2])
+                else:
+                    values.append(table[p2][pid])
+            array.append(values)
+        array = np.array(array, dtype=[("genes", object), ("genecount", int), ("genesim", float), ("hpos", object), ("hpocount", int), ("hposim", float)])
+        return array
+
+    # def lookup(self, patient_id1, patientid2=None):
+    #     if patient_id1 not in self.ids:
+    #         print("ID not in table.")
+    #         return None
+    #     axis1 = self.raw[patient_id1]
+    #     axis2 =
+    #         self.raw[patient_id1]
+    #     elif
+
+
+
+
 def overlap(range1: range, range2: range):
     if range1.start <= range2.stop and range2.start <= range1.stop:
         return True
     return False
+
+
+def lookup():
+    pass
 
 
 def compare_genes(patient1, patient2):
@@ -36,9 +77,10 @@ def compare_genes(patient1, patient2):
 #     return patient_genes
 
 
-def build_comparison_table(patients, skip_empty=True, ids_only=False, count_raw=True):
-    gene_sets = {patient.id: make_patient_geneset(patient, ids_only)
-                 for patient in list(patients.values())}
+def build_gene_comparison_table(patients, skip_empty=True,
+                                transcripts_only=True, mode="full"):
+    gene_sets = {patient.id: patient.all_genes(transcripts_only)
+                 for patient in patients.values()}
     if skip_empty:
         gene_sets = {k: v for k, v in gene_sets.items() if v}
     patient_ids = sorted(list(gene_sets.keys()))
@@ -52,13 +94,94 @@ def build_comparison_table(patients, skip_empty=True, ids_only=False, count_raw=
             if not patient1_set or not patient2_set:
                 patient_compare[patient2] = None
                 continue
-            if count_raw:
+            if mode == "count":
                 patient_compare[patient2] = len(patient1_set & patient2_set)
-            else:
+            elif mode == "similarity":
                 patient_compare[patient2] = (len(patient1_set & patient2_set)
                                              / len(patient1_set | patient2_set))
+            elif mode == "full":
+                genes = patient1_set & patient2_set
+                count = len(genes)
+                similarity = count / len(patient1_set | patient2_set)
+                patient_compare[patient2] = (genes, count, similarity)
         comparisons[patient1] = patient_compare
     return comparisons
+
+
+def build_hpo_comparison_table(patients, skip_empty=True, mode="full"):
+    hpo_sets = {patient.id: set(patient.hpo) for patient in patients.values()}
+    if skip_empty:
+        hpo_sets = {k: v for k, v in hpo_sets.items() if v}
+    patient_ids = sorted(list(hpo_sets.keys()))
+    comparisons = {}
+    while patient_ids:
+        patient1 = patient_ids.pop()
+        patient1_set = hpo_sets[patient1]
+        patient_compare = {}
+        for patient2 in patient_ids:
+            patient2_set = hpo_sets[patient2]
+            if not patient1_set or not patient2_set:
+                patient_compare[patient2] = None
+                continue
+            if mode == "count":
+                patient_compare[patient2] = len(patient1_set & patient2_set)
+            elif mode == "similarity":
+                patient_compare[patient2] = (len(patient1_set & patient2_set)
+                                             / len(patient1_set | patient2_set))
+            elif mode == "full":
+                hpos = patient1_set & patient2_set
+                count = len(hpos)
+                similarity = count / len(patient1_set | patient2_set)
+                patient_compare[patient2] = (hpos, count, similarity)
+        comparisons[patient1] = patient_compare
+    return comparisons
+
+
+def compound_comparison(patients): #, gene_comp, hpo_comp):
+    patient_ids = sorted([patient.id for patient in patients.values()])
+    genes = {patient.id: patient.all_genes() for patient in patients.values()}
+    hpos = {patient.id: set(patient.hpo) for patient in patients.values()}
+
+    comparisons = {}
+    while patient_ids:
+        patient1 = patient_ids.pop()
+        genes1 = genes[patient1]
+        hpo1 = hpos[patient1]
+
+        patient_comparison = {}
+        for patient2 in patient_ids:
+            genes2 = genes[patient2]
+            hpo2 = hpos[patient2]
+
+            gene_union = genes1 & genes2
+            gene_len = len(gene_union)
+            if gene_len == 0:
+                gene_similarity = 0.0
+            else:
+                gene_similarity = gene_len / len(genes1 | genes2)
+
+            hpo_union = hpo1 & hpo2
+            hpo_len = len(hpo_union)
+            if hpo_len == 0:
+                hpo_similarity = 0.0
+            else:
+                hpo_similarity = hpo_len / len(hpo1 | hpo2)
+
+            comparison = (gene_union, gene_len, gene_similarity,
+                          hpo_union, hpo_len, hpo_similarity)
+            patient_comparison[patient2] = comparison
+
+        comparisons[patient1] = patient_comparison
+    return comparisons
+
+# def compound_comparison(patients, gene_comp, hpo_comp):
+#     ids = [patient.id for patient in patients]
+#     comparisons = []
+#     while ids:
+#         patient1 = ids.pop()
+
+
+
 
 
 def write_comparison_table(table, out, self_match="size"):
@@ -70,7 +193,7 @@ def write_comparison_table(table, out, self_match="size"):
         for p2 in table:
             if pid == p2:
                 if self_match == "size":
-                    string += f",{len(make_patient_geneset(patients[pid]))}"
+                    string += f",{len(patients[pid].all_genes())}"
                 else:
                     string += f",{self_match}"
             elif p2 in table[pid]:
@@ -583,7 +706,7 @@ class Patient:
         cnvs = sorted(cnvs, key=lambda x: REFERENCE_CHR.index(x.chromosome))
         return cnvs
 
-    def identify_gene_overlaps(self, gene_set):
+    def identify_gene_overlaps(self, gene_set, transcripts_only=True):
         for cnv in self.cnvs:
             results = gene_set.get_locus(cnv.chromosome,
                                          cnv.range.start,
@@ -594,7 +717,7 @@ class Patient:
             # self.affected_gene_ids[cnv.__repr__()] = set([x.gene_id for x in results])
 
     def all_genes(self, transcripts_only=True):
-        all_genes = {gene for genes in self.cnvs.values() for gene in genes
+        all_genes = {gene for cnv in self.cnvs for gene in cnv.genes
                      if gene.is_transcript() or not transcripts_only}
         return all_genes
 
@@ -638,4 +761,4 @@ if __name__ == "__main__":
     # import sys
     # main(sys.argv[1], sys.argv[2])
     # genotypes, phenotypes, patients, geneset = test()
-    _, _, patients, geneset, ontology = test()
+    genotypes, phenotypes, patients, geneset, ontology = test()
