@@ -10,6 +10,7 @@ import mygene
 
 REFERENCE_CHR = [str(i) for i in range(1, 23)] + ["X", "Y"]
 
+
 # %% Utilities
 def jaccard(set1, set2):
     """Calculate Jaccard Index of two sets."""
@@ -28,6 +29,7 @@ def jaccard(set1, set2):
 
 
 def cnv_overlap(cnv1, cnv2):
+    """Check if two CNVs overlap each other."""
     if cnv1.chromosome != cnv2.chromosome:
         return False
     return overlap(cnv1.range, cnv2.range)
@@ -43,7 +45,8 @@ def overlap(range1: range, range2: range):
     return False
 
 
-def overlap_range(range1: range, range2: range):
+def get_range_intersect(range1: range, range2: range):
+    """Make range from the intersect of two ranges."""
     if not overlap(range1, range2):
         return range(0)
     start = max(range1.start, range2.start)
@@ -52,6 +55,7 @@ def overlap_range(range1: range, range2: range):
 
 
 def merge_ranges(range1: range, range2: range):
+    """Make range from the union of two ranges."""
     if not overlap(range1, range2):
         raise ValueError("Ranges do not overlap.")
     merged = range(min(range1.start, range1.start),
@@ -60,6 +64,7 @@ def merge_ranges(range1: range, range2: range):
 
 
 def merge_range_list(ranges):
+    """Merge all overlapping ranges in a list of ranges."""
     ranges_copy = sorted(ranges.copy(), key=lambda x: x.stop)
     ranges_copy = sorted(ranges_copy, key=lambda x: x.start)
     merged = []
@@ -81,6 +86,7 @@ def merge_range_list(ranges):
 
 
 def length_of_range_intersects(ranges):
+    """Calculate total length of all range intersects in list of ranges."""
     ranges_copy = sorted(ranges.copy(), key=lambda x: x.stop)
     ranges_copy = sorted(ranges_copy, key=lambda x: x.start)
     intersects = []
@@ -91,13 +97,76 @@ def length_of_range_intersects(ranges):
         for range2 in ranges_copy:
             if not overlap(range1, range2):
                 continue
-            intersects.append(overlap_range(range1, range2))
+            intersects.append(get_range_intersect(range1, range2))
     intersects = merge_range_list(intersects)
     total = sum([len(x) for x in intersects])
     return total
 
 
+def is_patient(patient):
+    """Check if object is a Patient object.
+
+    HI_Gene objects will still return False.
+    """
+    if not isinstance(patient, HI_Gene) and isinstance(patient, Patient):
+        return True
+    return False
+
+
+def is_gene(gene):
+    """Check if object is a HI_Gene object."""
+    if isinstance(gene, HI_Gene):
+        return True
+    return False
+
+
 # %% Data Classes
+
+sequence_contig = namedtuple("Sequence_Contig",
+                             ["name", "length", "cumulative_start"])
+
+
+class GenomeDict:
+    """GATK-style genome dictionary containing contig names and lengths."""
+
+    def __init__(self, file=None):
+        self.sequences = {}
+        self.index = {}
+        self.total = 0
+
+        if file is not None:
+            self.sequences = self.read_genome_dict(file)
+            self.index = {name: i for i, name in enumerate(self.sequences)}
+            self.total = sum([seq.length for seq in self.sequences.values()])
+
+    @staticmethod
+    def read_genome_dict(file):
+        """Read in GATK genome dictionary file."""
+        with open(file) as infile:
+            lines = infile.readlines()
+        lines = [line for line in lines if line.startswith("@SQ")]
+        for i, line in enumerate(lines):
+            line = line.strip().split("\t")
+            line = [line[1].replace("SN:", "", 1), int(line[2].replace("LN:", "", 1)), 0]
+            if i != 0:
+                line[2] = lines[i - 1][2] + line[1]
+            lines[i] = sequence_contig(*line)
+        lines = {seq.name: seq for seq in lines}
+        return lines
+
+    def abs_pos(self, chromosome, position):
+        """Calculate absolute position from chromosome position.
+
+        Uses genome contig order to establish relative positon within
+        cumulative chromosome lengths.
+        """
+        return self[chromosome].cumulative_start + position
+
+    def __getitem__(self, key):
+        """Retrieve item using key."""
+        return self.sequences[key]
+
+
 class PatientIntersect:
     """Record of similarity between two patients."""
 
@@ -136,6 +205,8 @@ class PatientIntersect:
 
 class PatientIntersect2:
     """Record of similarity between two patients."""
+
+    # pylint: disable=too-many-instance-attributes
 
     def __init__(self, patient_1, patient_2,
                  length_compare, loci_compare,
@@ -186,7 +257,7 @@ class PatientIntersect2:
 class ComparisonTable:
     """Data object holding all patient vs. patient comparisons."""
 
-    def __init__(self, patient_db, pack=True):
+    def __init__(self, patient_db):
         self.patient_db = patient_db
         self.raw = self.compare_patients()
         self.index = self.make_index()
@@ -215,6 +286,7 @@ class ComparisonTable:
 
     @classmethod
     def compare_all(cls, patient_1, patient_2):
+        """Compare all metrics between two patients."""
         length_compare = cls.compare_length(patient_1, patient_2)
         loci_compare = cls.compare_loci(patient_1, patient_2)
         gene_compare = cls.compare_genes(patient_1, patient_2)
@@ -226,6 +298,7 @@ class ComparisonTable:
         return comparison
 
     def compare_patients(self):
+        """Compare all patients to each other."""
         ids = list(self.patient_db.patients.keys())
         comparisons = {}
         while ids:
@@ -242,6 +315,7 @@ class ComparisonTable:
 
     @staticmethod
     def compare_length(patient_1, patient_2):
+        """Compare CNV length between two patients."""
         size_1 = sum([cnv.length for cnv in patient_1.cnvs])
         size_2 = sum([cnv.length for cnv in patient_2.cnvs])
         if size_1 == 0 or size_2 == 0:
@@ -250,13 +324,13 @@ class ComparisonTable:
 
     @staticmethod
     def compare_loci(patient_1, patient_2):
+        """Compare CNV loci between two patients."""
         ranges_1 = patient_1.get_affected_ranges()
         ranges_2 = patient_2.get_affected_ranges()
 
         total_union = 0
         total_intersect = 0
 
-        # intersects = {chrom: [0, 0] for chrom in set(ranges_1.keys()) | set(ranges_2.keys())}
         chromosomes = set(ranges_1.keys()) | set(ranges_2.keys())
         for chrom in chromosomes:
             if chrom not in ranges_1:
@@ -271,69 +345,66 @@ class ComparisonTable:
         jaccard_index = jaccard(total_intersect, total_union)
         return jaccard_index, total_intersect
 
-        #     intersects[chrom] = (len(loci_1[chrom] & loci_2[chrom]),
-        #                          len(loci_1[chrom] | loci_2[chrom]))
-        # totals = (sum([intersect[0] for intersect in intersects.values()]),
-        #           sum([intersect[1] for intersect in intersects.values()]))
-        # jaccard_index = jaccard(*totals)
-        # return jaccard_index, totals[0]
-
     @staticmethod
     def compare_genes(patient_1, patient_2):
+        """Compare affected genes between two patients."""
         jaccard_index, intersect = jaccard(patient_1.all_genes(), patient_2.all_genes())
-        if (isinstance(patient_1, HI_Gene) or isinstance(patient_2, HI_Gene)
-                and jaccard_index > 0):
+        if (is_gene(patient_1) or is_gene(patient_2)) and jaccard_index > 0:
             jaccard_index = 1.0
         return jaccard_index, intersect
 
     @staticmethod
     def compare_hpos(patient_1, patient_2):
+        """Compare HPO terms between two patients."""
         jaccard_index, intersect = jaccard(patient_1.hpo, patient_2.hpo)
         return jaccard_index, intersect
 
-    def compare(self):
-        """Compare two patient records."""
-        patient_ids = sorted([patient.id for patient in self.patient_db.patients.values()])
-        genes = {patient.id: patient.all_genes() for patient in self.patient_db.patients.values()}
-        hpos = {patient.id: set(patient.hpo) for patient in self.patient_db.patients.values()}
+    # def compare_hpos2(patient_1, patient_2, strict=False):
+    #     pass
 
-        comparisons = {}
-        while patient_ids:
-            patient1 = patient_ids.pop()
-            genes1 = genes[patient1]
-            hpo1 = hpos[patient1]
+    # DEPRECATED
+    # def compare(self):
+    #     """Compare two patient records."""
+    #     patient_ids = sorted([patient.id for patient in self.patient_db.patients.values()])
+    #     genes = {patient.id: patient.all_genes() for patient in self.patient_db.patients.values()}
+    #     hpos = {patient.id: set(patient.hpo) for patient in self.patient_db.patients.values()}
 
-            patient_comparison = {}
-            patient_comparison[patient1] = (genes1, len(genes1), 1,
-                                            hpo1, len(hpo1), 1)
+    #     comparisons = {}
+    #     while patient_ids:
+    #         patient1 = patient_ids.pop()
+    #         genes1 = genes[patient1]
+    #         hpo1 = hpos[patient1]
 
-            for patient2 in patient_ids:
-                genes2 = genes[patient2]
-                hpo2 = hpos[patient2]
+    #         patient_comparison = {}
+    #         patient_comparison[patient1] = (genes1, len(genes1), 1,
+    #                                         hpo1, len(hpo1), 1)
 
-                gene_union = genes1 & genes2
-                gene_len = len(gene_union)
-                if gene_len == 0:
-                    gene_similarity = 0.0
-                elif (isinstance(self.patient_db[patient1], HI_Gene)
-                      or isinstance(self.patient_db[patient2], HI_Gene)):
-                    gene_similarity = 1.0
-                else:
-                    gene_similarity = gene_len / len(genes1 | genes2)
+    #         for patient2 in patient_ids:
+    #             genes2 = genes[patient2]
+    #             hpo2 = hpos[patient2]
 
-                hpo_union = hpo1 & hpo2
-                hpo_len = len(hpo_union)
-                if hpo_len == 0:
-                    hpo_similarity = 0.0
-                else:
-                    hpo_similarity = hpo_len / len(hpo1 | hpo2)
+    #             gene_union = genes1 & genes2
+    #             gene_len = len(gene_union)
+    #             if gene_len == 0:
+    #                 gene_similarity = 0.0
+    #             elif is_gene(self.patient_db[patient1]) or is_gene(self.patient_db[patient2]):
+    #                 gene_similarity = 1.0
+    #             else:
+    #                 gene_similarity = gene_len / len(genes1 | genes2)
 
-                comparison = (gene_union, gene_len, gene_similarity,
-                              hpo_union, hpo_len, hpo_similarity)
-                patient_comparison[patient2] = comparison
+    #             hpo_union = hpo1 & hpo2
+    #             hpo_len = len(hpo_union)
+    #             if hpo_len == 0:
+    #                 hpo_similarity = 0.0
+    #             else:
+    #                 hpo_similarity = hpo_len / len(hpo1 | hpo2)
 
-            comparisons[patient1] = patient_comparison
-        return comparisons
+    #             comparison = (gene_union, gene_len, gene_similarity,
+    #                           hpo_union, hpo_len, hpo_similarity)
+    #             patient_comparison[patient2] = comparison
+
+    #         comparisons[patient1] = patient_comparison
+    #     return comparisons
 
     def make_array(self, pack=True):
         """Structure patient comparisons as a numpy array."""
@@ -383,9 +454,30 @@ class ComparisonTable:
         if not pid2:
             return self.array[self.index[pid1]][self.index[pid1]]
         if pid1 not in self.index:
-            print("ID not found.")
-            return
+            raise KeyError("ID not found.")
         return self.array[self.index[pid1]][self.index[pid2]]
+
+    def write_all_comparisons(self, outfile, patients_only=True):
+        properties = ["length_similarity",
+                      "loci_similarity", "loci_shared_size",
+                      "gene_similarity", "gene_count",
+                      "hpo_similarity", "hpo_count"]
+        write_me = ["\t".join(["patient1", "patient2"] + properties) + "\n"]
+        for intersect in self:
+            p1, p2 = [self.patient_db[p] for p in intersect.patients]
+            if p1 == p2:
+                continue
+            if (is_gene(p1) or is_gene(p2)) and patients_only:
+                continue
+            this_intersect = "\t".join(
+                [f"{intersect.patients[0]}", f"{intersect.patients[1]}"]
+                + [f"{intersect.__getattribute__(prop)}" for prop in properties]
+                ) + "\n"
+            write_me.append(this_intersect)
+        with open(outfile, "w") as out:
+            out.writelines(write_me)
+
+
 
 
 # def compare_genes(patient1, patient2):
@@ -537,11 +629,11 @@ def write_comparison_table(table, patients, out, self_match="size"):
     writer = [header + "\n"] + writer
     with open(out, "w") as outfile:
         outfile.writelines(writer)
-    return
 
 
 class GeneAnnotation:
     """Record of a single gene annotation."""
+    # pylint: disable=too-many-instance-attributes
 
     def __init__(self, chromosome, source, feature, start, end, score, strand,
                  frame, gene_id=None, gene_name=None, transcript_id=None,
@@ -660,7 +752,6 @@ class DataManager:
                           + "\n")
         with open(filename, "w") as outfile:
             outfile.writelines(writer)
-        return
 
     @staticmethod
     def coerce_booleans(data):
@@ -747,8 +838,8 @@ class DataManager:
     def make_patients(genotypes, phenotypes,
                       geneset=None, hpos=None, ontology=None):
         """Construct Patient objects from data."""
-        subjects = (set([record["subject"] for record in genotypes])
-                    | set([record["owner"] for record in phenotypes]))
+        subjects = ({record["subject"] for record in genotypes}
+                    | {record["owner"] for record in phenotypes})
         patients = {subject: Patient(subject) for subject in subjects}
         for genotype in genotypes:
             patients[genotype["subject"]].genotypes.append(genotype)
@@ -785,7 +876,6 @@ class DataManager:
         print(f"{'Genotypes':13}{'Phenotypes':14}Counts")
         for geno, pheno in sorted(list(set(sums)), key=lambda x: f"{x[0]}_{x[1]}"):
             print(f"{geno:<13}{pheno:<14}{sums.count((geno,pheno)):3}")
-        return
 
     @staticmethod
     def make_UCSC_browser_tracks(patients, out, filter_chrom=None):
@@ -805,7 +895,6 @@ class DataManager:
             writer += patient_writer
         with open(out, "w") as outfile:
             outfile.writelines(writer)
-        return
 
     @staticmethod
     def read_HI_genes(file):
@@ -885,16 +974,17 @@ class DataManager:
                    "none": results_none, "bad": results_bad}
         return results
 
-    def read_gnomad_pli_data(file):
-        with open(file) as infile:
-            reader = csv.DictReader(infile, delimiter="\t")
-            data = [row for row in reader]
-            # header = infile.readline()
-            # data = infile.readlines()
-        # header = header.rstrip("\n").split("\t")
-        # data = [line.rstrip("\n").split("\t") for line in data]
-        data = {x["gene"]: x for x in data}
-        return data
+    # @staticmethod
+    # def read_gnomad_pli_data(file):
+    #     with open(file) as infile:
+    #         reader = csv.DictReader(infile, delimiter="\t")
+    #         data = [row for row in reader]
+    #         # header = infile.readline()
+    #         # data = infile.readlines()
+    #     # header = header.rstrip("\n").split("\t")
+    #     # data = [line.rstrip("\n").split("\t") for line in data]
+    #     data = {x["gene"]: x for x in data}
+    #     return data
 
 
     # @staticmethod
@@ -1005,18 +1095,35 @@ class CNV:
 class PatientDatabase:
     def __init__(self, patients):
         self.patients = patients
+        self.index = self.make_index()
         self.cnvs = self.organize_cnvs()
+        self.size = len(self.patients)
         print(self.summary())
 
     def __getitem__(self, key):
         return self.patients[key]
 
+    def __iter__(self):
+        """Initialize iterable."""
+        self.__iteri__ = 0
+        return self
+
+    def __next__(self):
+        """Iterate 2-axis iterable."""
+        if self.__iteri__ == self.size:
+            raise StopIteration
+        result = self.patients[self.index[self.__iteri__]]
+        self.__iteri__ += 1
+        return result
+
+    def make_index(self):
+        index = dict(enumerate(self.patients))
+        return index
+
     def organize_cnvs(self):
-        cnv_dict = {}
-        cnvs = [cnv for patient in self.patients.values() for cnv in patient.cnvs]
-        for cnv in sorted(cnvs, key=lambda x: x.range.start):
-            if cnv.chromosome not in cnv_dict:
-                cnv_dict[cnv.chromosome] = []
+        cnvs = sorted([cnv for patient in self.patients.values() for cnv in patient.cnvs], key=lambda x: x.range.start)
+        cnv_dict = {chromosome: [] for chromosome in {cnv.chromosome for cnv in cnvs}}
+        for cnv in cnvs:
             cnv_dict[cnv.chromosome].append(cnv)
         return cnv_dict
 
@@ -1025,6 +1132,114 @@ class PatientDatabase:
         summary_txt = (f"Patients: {len(self.patients)}\n"
                        f"CNVs: {len_cnv}")
         return summary_txt
+
+    def make_phenotype_table(self):
+        all_hpos = sorted(list({hpo.id for patient in self for hpo in patient.hpo}))
+        all_hpos = {name: pos for pos, name in enumerate(all_hpos)}
+        hpo_count = len(all_hpos)
+
+        header = ["patient"] + list(all_hpos.keys())
+        rows = {}
+
+        for patient in self:
+            if is_gene(patient):
+                continue
+            row = [0] * hpo_count
+            for hpo in patient.hpo:
+                row[all_hpos[hpo.id]] = 1
+            row.insert(0, patient.id)
+            row = dict(zip(header, row))
+            rows[row["patient"]] = row
+        return rows
+
+    def make_gene_table(self):
+        all_genes = sorted(list({gene.gene_id for patient in self for gene in patient.all_genes()}))
+        all_genes = {name: pos for pos, name in enumerate(all_genes)}
+        gene_count = len(all_genes)
+
+        header = ["patient"] + list(all_genes.keys())
+        rows = {}
+
+        for patient in self:
+            if is_gene(patient):
+                continue
+
+            row = [0] * gene_count
+            for gene in patient.all_genes():
+                row[all_genes[gene.gene_id]] = 1
+            row.insert(0, patient.id)
+
+            row = dict(zip(header, row))
+            rows[row["patient"]] = row
+        return rows
+
+    def make_genotypes_table(self, absolute_pos=True, genome_dict=None):
+        if absolute_pos and genome_dict is None:
+            raise ValueError("Asbolute positions require a reference genome dictionary.")
+        header  = ["patient", "start", "length"]
+
+        rows = {}
+        for patient in self:
+            if len(patient.cnvs) != 1:
+                continue
+            cnv = patient.cnvs[0]
+            if absolute_pos:
+                row = dict(zip(header, [patient.id, genome_dict.abs_pos(cnv.chromosome, cnv.range.start), cnv.length]))
+            else:
+                row = dict(zip(header, [patient.id, cnv.range.start, cnv.length]))
+            rows[row["patient"]] = row
+        return rows
+
+    def make_combination_table(self, genotypes=True, genes=True, phenotypes=False,
+                               absolute_pos=True, genome_dict=None):
+
+        # geno_table = {}
+        # gene_table = {}
+        # pheno_table = {}
+
+        # if genotypes:
+        #     geno_table = self.make_genotypes_table(absolute_pos, genome_dict)
+        # if genes:
+        #     gene_table = self.make_gene_table()
+        # if phenotypes:
+        #     pheno_table = self.make_phenotype_table()
+
+        subtables = []
+        if genotypes:
+            subtables.append(self.make_genotypes_table(absolute_pos, genome_dict))
+        if genes:
+            subtables.append(self.make_gene_table())
+        if phenotypes:
+            subtables.append(self.make_phenotype_table())
+
+        names = set(subtables[0].keys())
+        names.intersection_update(*[set(subtable.keys()) for subtable in subtables])
+        # names = {name for subtable in subtables for name in subtable}
+        # names = (set(geno_table.keys())
+        #          | set(gene_table.keys())
+        #          | set(pheno_table.keys()))
+
+        rows = {}
+        for name in names:
+            row = {}
+            for subtable in subtables:
+                row.update(subtable[name])
+            # if any([genotypes and name not in geno_table, genes and name not in gene_table, phenotypes and name not in pheno_table]):
+            #     continue
+            # row = {}
+            # row.update(geno_table[name])
+            # row.update(gene_table[name])
+            # row.update(pheno_table[name])
+            rows[name] = row
+        return rows
+
+    @staticmethod
+    def write_table(table, out):
+        table_values = list(table.values())
+        with open(out, "w", newline="") as outfile:
+            writer = csv.DictWriter(outfile, table_values[0].keys())
+            writer.writeheader()
+            writer.writerows(table_values)
 
 
 class Patient:
@@ -1125,7 +1340,7 @@ def build_network_nodes2(comparison_table):
             hi = 0
             for intersect in comparison_table.array[comparison_table.index[patient]]:
                 patient2 = comparison_table.patient_db[intersect.patients[1]]
-                if (isinstance(patient2, HI_Gene)
+                if (is_gene(patient2)
                         and intersect.gene_count > 0
                         and patient2.score <= 2):
                     hi += 1
@@ -1149,7 +1364,6 @@ def write_network_nodes2(nodes, out, normalize=True):
         writer.append(",".join([str(x) for x in node]) + "\n")
     with open(out, "w") as outfile:
         outfile.writelines(writer)
-    return
 
 
 def build_network_edges2(comparison_table):
@@ -1185,7 +1399,6 @@ def write_network_edges2(edges, out, normalize=True):
         writer.append(",".join([str(x) for x in edge]) + "\n")
     with open(out, "w") as outfile:
         outfile.writelines(writer)
-    return
 
 
 # def build_network_nodes(table, patients):
@@ -1329,8 +1542,7 @@ def similarity_vs_hpo_scatter(patient_comparison):
     for intersect in patient_comparison:
         p1 = patient_comparison.patient_db[intersect.patients[0]]
         p2 = patient_comparison.patient_db[intersect.patients[1]]
-        if (isinstance(p1, HI_Gene) or isinstance(p2, HI_Gene)
-                or p1.id == p2.id):
+        if is_gene(p1) or is_gene(p2) or p1.id == p2.id:
             continue
         points.append((intersect.gene_similarity, intersect.hpo_count))
     points = list(zip(*points))
@@ -1342,7 +1554,8 @@ def similarity_vs_hpo_scatter(patient_comparison):
 
 
 def plot_individual_factors(patient_comparison):
-    plotters = [x for x in patient_comparison if not isinstance(x, HI_Gene)]
+    plotters = [x for x in patient_comparison if not is_gene(x)]
+    plotters = [x for x in plotters if x.patients[0] != x.patients[1]]
     hpos = [x.hpo_count for x in plotters]
     fig, (ax1, ax2, ax3) = plt.subplots(1, 3)
     ax1.scatter([x.length_similarity for x in plotters], hpos)
@@ -1353,6 +1566,33 @@ def plot_individual_factors(patient_comparison):
     ax1.set_xlabel("Length Similarity", fontsize=24)
     ax2.set_xlabel("Loci Similarity", fontsize=24)
     ax3.set_xlabel("Gene Similarity", fontsize=24)
+
+def make_cnv_histogram_info(patient_db, chromosome, genome_dict):
+    cnvs = patient_db.cnvs[chromosome]
+
+    bin_starts = range(1, genome_dict["6"].length, 1000000)
+    bin_counts = {range(bin_start, bin_start + 1000000): 0 for bin_start in bin_starts[:-1]}
+    bin_counts[range(bin_starts[-1], genome_dict["6"].length + 1)] = 0
+
+    for cnv in cnvs:
+        for bin_range in bin_counts:
+            if overlap(cnv.range, bin_range):
+                bin_counts[bin_range] += 1
+    return bin_counts
+
+def plot_cnv_histogram(hist_info):
+    bins = [(x.start - 1)/1000000 for x in hist_info]
+    heights = list(hist_info.values())
+
+    # plt.bar(y_pos, performance, align='center', alpha=0.5)
+    plt.bar(bins, heights, align="center", alpha=0.5, color="seagreen")
+    plt.xticks(fontsize=30, fontname="Tahoma")
+    plt.yticks(fontsize=30, fontname="Tahoma")
+    plt.xlabel("Megabase", fontsize=36, fontname="Tahoma")
+    plt.ylabel("Count", fontsize=36, fontname="Tahoma")
+    plt.title("CNV coverage per chromosome 6 megabase", fontsize=36, fontname="Tahoma")
+
+    plt.show()
 
 
 # def plot_patient(patient):
@@ -1371,6 +1611,10 @@ def main(geno_file, pheno_file):
 
 def test():
     """Test run."""
+    # Read genome dictionary.
+    print("Reading reference genome dicionary.")
+    genomedict = GenomeDict("C:/Users/tyler/Documents/Chr6/human_g1k_v37_phiX.dict")
+
     # Read geneset.
     print("Reading gene set...")
     geneset = GeneSet("C:/Users/tyler/Documents/Chr6/hg19.ensGene.gtf.gz")
@@ -1412,13 +1656,15 @@ def test():
     # DataManager.print_summary_counts(patients)
     comparison = ComparisonTable(patients)
     print("Done.")
-    return (genotypes,
-            phenotypes,
-            patients,
-            comparison,
-            geneset,
-            ontology,
-            hi_genes
+    return (
+        genotypes,
+        phenotypes,
+        patients,
+        comparison,
+        geneset,
+        ontology,
+        hi_genes,
+        genomedict
         )
 
 
@@ -1426,4 +1672,4 @@ if __name__ == "__main__":
     # import sys
     # main(sys.argv[1], sys.argv[2])
     # genotypes, phenotypes, patients, geneset = test()
-    my_genotypes, my_phenotypes, my_patients, my_comparison, my_geneset, my_ontology, my_hi_genes = test()
+    my_genotypes, my_phenotypes, my_patients, my_comparison, my_geneset, my_ontology, my_hi_genes, my_genomedict = test()
