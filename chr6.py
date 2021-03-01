@@ -1,8 +1,10 @@
 """The Chromosome 6 Project Data Management."""
 import csv
+from datetime import datetime
 import gzip
 from collections import namedtuple
 from math import log
+
 import matplotlib.pyplot as plt
 import numpy as np
 from pronto import Ontology
@@ -122,8 +124,8 @@ def is_gene(gene):
 
 # %% Data Classes
 
-sequence_contig = namedtuple("Sequence_Contig",
-                             ["name", "length", "cumulative_start"])
+SequenceContig = namedtuple("SequenceContig",
+                            ["name", "length", "cumulative_start"])
 
 
 class GenomeDict:
@@ -150,7 +152,7 @@ class GenomeDict:
             line = [line[1].replace("SN:", "", 1), int(line[2].replace("LN:", "", 1)), 0]
             if i != 0:
                 line[2] = lines[i - 1][2] + line[1]
-            lines[i] = sequence_contig(*line)
+            lines[i] = SequenceContig(*line)
         lines = {seq.name: seq for seq in lines}
         return lines
 
@@ -261,7 +263,7 @@ class ComparisonTable:
         self.patient_db = patient_db
         self.raw = self.compare_patients()
         self.index = self.make_index()
-        self.array = self.make_array2()
+        self.array = self.make_array()
         self.size = len(self.index)
 
         self.__iteri__ = 0
@@ -359,41 +361,16 @@ class ComparisonTable:
         jaccard_index, intersect = jaccard(patient_1.hpo, patient_2.hpo)
         return jaccard_index, intersect
 
-    def make_array(self, pack=True):
-        """Structure patient comparisons as a numpy array."""
+    def make_array(self):
+        """Convert raw comparison dictionary to numpy array."""
         array = []
-        for pid in self.index:
+        for patient1 in self.index:
             values = []
-            for p2 in self.index:
-                if p2 in self.raw[pid]:
-                    lookup = self.raw[pid][p2]
+            for patient2 in self.index:
+                if patient2 in self.raw[patient1]:
+                    values.append(self.raw[patient1][patient2])
                 else:
-                    lookup = self.raw[p2][pid]
-                if pack:
-                    lookup = PatientIntersect(pid, p2, *lookup)
-                values.append(lookup)
-            array.append(values)
-        if pack:
-            array = np.array(array)
-        else:
-            array = np.array(
-                array,
-                dtype=[
-                    ("genes", object), ("genecount", int), ("genesim", float),
-                    ("hpos", object), ("hpocount", int), ("hposim", float)
-                    ]
-                )
-        return array
-
-    def make_array2(self):
-        array = []
-        for pid in self.index:
-            values = []
-            for p2 in self.index:
-                if p2 in self.raw[pid]:
-                    values.append(self.raw[pid][p2])
-                else:
-                    values.append(self.raw[p2][pid])
+                    values.append(self.raw[patient2][patient1])
             array.append(values)
         array = np.array(array)
         return array
@@ -406,11 +383,14 @@ class ComparisonTable:
         """Look up patient or patient-patient intersect in comparison array."""
         if not pid2:
             return self.array[self.index[pid1]][self.index[pid1]]
+        if pid2.lower() == "all":
+            return self.array[self.index[pid1]]
         if pid1 not in self.index:
             raise KeyError("ID not found.")
         return self.array[self.index[pid1]][self.index[pid2]]
 
     def write_all_comparisons(self, outfile, patients_only=True):
+        """Write comparison results to TSV file."""
         properties = ["length_similarity",
                       "loci_similarity", "loci_shared_size",
                       "gene_similarity", "gene_count",
@@ -430,34 +410,65 @@ class ComparisonTable:
         with open(outfile, "w") as out:
             out.writelines(write_me)
 
+    def make_predictions(self, patient_id, threshold=0.7):
+        index_patient = self.patient_db[patient_id]
+        intersections = self.lookup(patient_id)
+        filtered = []
+        for interesect in intersections:
+            other = self.patient_db[[patient for patient in intersect.patients
+                     if patient != patient_id][0]]
+            if patient_id == other:
+                continue
+            if not (is_patient(self.patient_db[patient1])
+                    and is_patient(self.patient_db[patient2])):
+                continue
+            if not intersect.gene_similarity >= threshold:
+                continue
+            if not self.patient_db[patient1].hpo or not self.patient_db[patient2].hpo:
+                continue
+            for patient in intersect.patients:
+                if not self.patient_db[patient].hpo:
+
+
+                         and intersect.gene_similarity >= threshold)
+        intersections = [intersect for intersect in intersections
+                         if is_patient(self.patient_db[intersect.patients[0]])
+                         and is_patient(self.patient_db[intersect.patients[1]])
+                         and intersect.gene_similarity >= threshold]
+        intersections = [intersect for intersect in intersections
+                         if ]
+
+        return intersections
+
 
 # XXX: This probably doesn't work anymore.
-def write_comparison_table(table, patients, out, self_match="size"):
-    """Write comparison table to file. Deprecated."""
-    header = "PatientID"
-    writer = []
-    for pid in table:
-        header += f",{pid}"
-        string = pid
-        for p2 in table:
-            if pid == p2:
-                if self_match == "size":
-                    string += f",{len(patients[pid].all_genes())}"
-                else:
-                    string += f",{self_match}"
-            elif p2 in table[pid]:
-                string += f",{table[pid][p2]}"
-            else:
-                string += f",{table[p2][pid]}"
-        string += "\n"
-        writer.append(string)
-    writer = [header + "\n"] + writer
-    with open(out, "w") as outfile:
-        outfile.writelines(writer)
+# def write_comparison_table(table, patients, out, self_match="size"):
+#     """Write comparison table to file. Deprecated."""
+#     header = "PatientID"
+#     writer = []
+#     for pid in table:
+#         header += f",{pid}"
+#         string = pid
+#         for p2 in table:
+#             if pid == p2:
+#                 if self_match == "size":
+#                     string += f",{len(patients[pid].all_genes())}"
+#                 else:
+#                     string += f",{self_match}"
+#             elif p2 in table[pid]:
+#                 string += f",{table[pid][p2]}"
+#             else:
+#                 string += f",{table[p2][pid]}"
+#         string += "\n"
+#         writer.append(string)
+#     writer = [header + "\n"] + writer
+#     with open(out, "w") as outfile:
+#         outfile.writelines(writer)
 
 
 class GeneAnnotation:
     """Record of a single gene annotation."""
+
     # pylint: disable=too-many-instance-attributes
 
     def __init__(self, chromosome, source, feature, start, end, score, strand,
@@ -660,8 +671,8 @@ class DataManager:
         return fixed
 
     @staticmethod
-    def make_patients(genotypes, phenotypes,
-                      geneset=None, hpos=None, ontology=None):
+    def make_patients(genotypes, phenotypes, geneset=None, hpos=None,
+                      ontology=None, expand_hpos=True):
         """Construct Patient objects from data."""
         subjects = ({record["subject"] for record in genotypes}
                     | {record["owner"] for record in phenotypes})
@@ -685,9 +696,12 @@ class DataManager:
                     if value == "T":
                         patient_hpos.append(ontology[hpo_id])
                 patient.hpo = patient_hpos
+                if expand_hpos:
+                    patient.expand_hpo_terms(ontology)
         for patient in patients.values():
             if patient.genotypes:
                 patient.origin = patient.genotypes[0]["origin info"]
+            patient.convert_birthday_to_datetime()
         return patients
 
     @staticmethod
@@ -811,7 +825,6 @@ class DataManager:
     #     data = {x["gene"]: x for x in data}
     #     return data
 
-
     # @staticmethod
     # def symbol_lookup(mygene_instance, gene_symbol):
     #     results = mygene_instance.query(gene_symbol, fields="ensembl.gene", species="human")
@@ -824,6 +837,8 @@ class DataManager:
 
 
 class Cytoband:
+    """Cytogenetic banding object."""
+
     def __init__(self, chromosome, start, stop, band, stain):
         self.chr = chromosome
         self.locus = range(start, stop)
@@ -831,6 +846,7 @@ class Cytoband:
         self.stain = stain
 
     def __str__(self):
+        """Make custom pretty string representation."""
         string = ("Cytoband("
                   f"locus='{self.chr}:{self.locus.start}-{self.locus.stop - 1}', "
                   f"band='{self.band}', "
@@ -838,23 +854,28 @@ class Cytoband:
         return string
 
     def __repr__(self):
+        """Make custom technical string representation."""
         string = f"Cytoband({self.chr}:{min(self.locus)}-{max(self.locus)})"
         return string
 
 
 class Cytomap:
+    """Cytogenetic banding map of a genome."""
+
     def __init__(self, file="C:/Users/tyler/Documents/cytoBand.txt"):
         self.path = file
         self.cytobands = self.make_cytobands(self.path)
 
     @classmethod
     def make_cytobands(cls, filepath):
+        """Set up cytogenetic map from data file."""
         cytobands = cls.read_cytoband_file(filepath)
         cytobands = cls.split_cytobands_by_chr(cytobands)
         return cytobands
 
     @staticmethod
     def read_cytoband_file(file):
+        """Read cytogenetic banding from file."""
         with open(file) as infile:
             cytobands = infile.readlines()
         cytobands = [line.strip().split("\t") for line in cytobands]
@@ -864,6 +885,7 @@ class Cytomap:
 
     @staticmethod
     def split_cytobands_by_chr(cytobands):
+        """Organize cytogenetic bands by chromosome."""
         cytomap = {chrom: [] for chrom in {cytoband.chr for cytoband in cytobands}}
         for cytoband in cytobands:
             cytomap[cytoband.chr].append(cytoband)
@@ -871,6 +893,7 @@ class Cytomap:
 
     @staticmethod
     def split_cytomap_by_arm(cytomap):
+        """Split cytogenetic bands by chromosome arm."""
         arm_map = {key: {"p": [], "q": []} for key in cytomap.keys()}
         for chrom_list in cytomap.values():
             for cytoband in chrom_list:
@@ -878,12 +901,14 @@ class Cytomap:
         return arm_map
 
     def get_band(self, chromosome, coordinate):
+        """Get corresponding cytogenetic band at a genomic locus."""
         for band in self.cytobands[chromosome]:
             if coordinate in band.locus:
                 return band
         return None
 
     def get_bands(self, chromosome, range_: range):
+        """Get corresponding cytogenetic bands in a genomic locus range."""
         bands = []
         for band in self.cytobands[chromosome]:
             if overlap(range_, band.locus):
@@ -892,6 +917,8 @@ class Cytomap:
 
 
 class CNV:
+    """Data object containing CNV information."""
+
     def __init__(self, chromosome, start, stop, change, ID=None, genes=None):
         self.id = ID
         self.chromosome = str(chromosome)
@@ -901,6 +928,7 @@ class CNV:
         self.genes = genes
 
     def __repr__(self):
+        """Make string representation of object."""
         string = (
             f"CNV({self.change}:"
             f"{self.chromosome}:{self.range.start}-{self.range.stop})"
@@ -908,6 +936,7 @@ class CNV:
         return string
 
     def __str__(self):
+        """Make pretty string of object."""
         string = ("CNV:\n"
                   f"  Change = {self.change}\n"
                   f"  Locus = {self.chromosome}:"
@@ -918,6 +947,8 @@ class CNV:
 
 # TODO: Add a method to add a patient.
 class PatientDatabase:
+    """Database containing all Patient objects."""
+
     def __init__(self, patients):
         self.patients = patients
         self.index = self.make_index()
@@ -926,6 +957,7 @@ class PatientDatabase:
         print(self.summary())
 
     def __getitem__(self, key):
+        """Get patient by patient ID."""
         return self.patients[key]
 
     def __iter__(self):
@@ -942,23 +974,30 @@ class PatientDatabase:
         return result
 
     def make_index(self):
+        """Make database index for iteration purposes."""
         index = dict(enumerate(self.patients))
         return index
 
     def organize_cnvs(self):
-        cnvs = sorted([cnv for patient in self.patients.values() for cnv in patient.cnvs], key=lambda x: x.range.start)
+        """Get and organize CNVs from all patients."""
+        cnvs = sorted(
+            [cnv for patient in self.patients.values() for cnv in patient.cnvs if is_patient(patient)],
+            key=lambda x: x.range.start
+            )
         cnv_dict = {chromosome: [] for chromosome in {cnv.chromosome for cnv in cnvs}}
         for cnv in cnvs:
             cnv_dict[cnv.chromosome].append(cnv)
         return cnv_dict
 
     def summary(self):
+        """Calculate summary counts."""
         len_cnv = len([cnv for chromosome in self.cnvs.values() for cnv in chromosome])
         summary_txt = (f"Patients: {len(self.patients)}\n"
                        f"CNVs: {len_cnv}")
         return summary_txt
 
     def make_phenotype_table(self):
+        """Tabulate phenotype info for all patients."""
         all_hpos = sorted(list({hpo.id for patient in self for hpo in patient.hpo}))
         all_hpos = {name: pos for pos, name in enumerate(all_hpos)}
         hpo_count = len(all_hpos)
@@ -978,6 +1017,7 @@ class PatientDatabase:
         return rows
 
     def make_gene_table(self):
+        """Tabulate gene info for all patients."""
         all_genes = sorted(list({gene.gene_id for patient in self for gene in patient.all_genes()}))
         all_genes = {name: pos for pos, name in enumerate(all_genes)}
         gene_count = len(all_genes)
@@ -999,9 +1039,10 @@ class PatientDatabase:
         return rows
 
     def make_genotypes_table(self, absolute_pos=True, genome_dict=None):
+        """Tabulate CNV information for all single-CNV patients."""
         if absolute_pos and genome_dict is None:
             raise ValueError("Asbolute positions require a reference genome dictionary.")
-        header  = ["patient", "start", "length"]
+        header = ["patient", "start", "length"]
 
         rows = {}
         for patient in self:
@@ -1015,51 +1056,35 @@ class PatientDatabase:
             rows[row["patient"]] = row
         return rows
 
-    def make_combination_table(self, genotypes=True, genes=True, phenotypes=False,
-                               absolute_pos=True, genome_dict=None):
-
-        # geno_table = {}
-        # gene_table = {}
-        # pheno_table = {}
-
-        # if genotypes:
-        #     geno_table = self.make_genotypes_table(absolute_pos, genome_dict)
-        # if genes:
-        #     gene_table = self.make_gene_table()
-        # if phenotypes:
-        #     pheno_table = self.make_phenotype_table()
-
+    def make_combination_table(self, genotypes=True, genes=True,
+                               phenotypes=False, absolute_pos=True,
+                               genome_dict=None):
+        """Tabulate multiple types of patient data."""
         subtables = []
         if genotypes:
-            subtables.append(self.make_genotypes_table(absolute_pos, genome_dict))
+            subtables.append(self.make_genotypes_table(absolute_pos,
+                                                       genome_dict))
         if genes:
             subtables.append(self.make_gene_table())
         if phenotypes:
             subtables.append(self.make_phenotype_table())
 
         names = set(subtables[0].keys())
-        names.intersection_update(*[set(subtable.keys()) for subtable in subtables])
-        # names = {name for subtable in subtables for name in subtable}
-        # names = (set(geno_table.keys())
-        #          | set(gene_table.keys())
-        #          | set(pheno_table.keys()))
+        names.intersection_update(*[
+            set(subtable.keys()) for subtable in subtables
+            ])
 
         rows = {}
         for name in names:
             row = {}
             for subtable in subtables:
                 row.update(subtable[name])
-            # if any([genotypes and name not in geno_table, genes and name not in gene_table, phenotypes and name not in pheno_table]):
-            #     continue
-            # row = {}
-            # row.update(geno_table[name])
-            # row.update(gene_table[name])
-            # row.update(pheno_table[name])
             rows[name] = row
         return rows
 
     @staticmethod
     def write_table(table, out):
+        """Write CSV file of tabulated data."""
         table_values = list(table.values())
         with open(out, "w", newline="") as outfile:
             writer = csv.DictWriter(outfile, table_values[0].keys())
@@ -1079,6 +1104,8 @@ class Patient:
         # self.affected_gene_ids = {}
         self.hpo = []
         self.origin = None
+        self.birthdate = None
+        self.age = None
 
     def __repr__(self):
         """Construct string representation."""
@@ -1087,6 +1114,7 @@ class Patient:
                 f"  Phenotypes: {len(self.phenotypes)}")
 
     def extract_cnvs(self):
+        """Pull CNV data from genotype information."""
         cnvs = []
         for genotype in self.genotypes:
             chrom = genotype["Chromosome"]
@@ -1101,6 +1129,7 @@ class Patient:
         return cnvs
 
     def get_affected_ranges(self):
+        """Get CNV ranges from all CNVs."""
         ranges = {cnv.chromosome: [] for cnv in self.cnvs}
         for cnv in self.cnvs:
             ranges[cnv.chromosome].append(cnv.range)
@@ -1109,26 +1138,51 @@ class Patient:
         return ranges
 
     def identify_gene_overlaps(self, gene_set, transcripts_only=True):
+        """Set genes affected per CNV."""
         for cnv in self.cnvs:
             results = gene_set.get_locus(cnv.chromosome,
                                          cnv.range.start,
                                          cnv.range.stop)
 
-            cnv.genes = [x for x in results if not transcripts_only or x.feature == "transcript"]
-            # self.affected_genes[cnv.__repr__()] = results
-            # self.affected_gene_ids[cnv.__repr__()] = set([x.gene_id for x in results])
+            cnv.genes = [x for x in results
+                         if not transcripts_only or x.feature == "transcript"]
 
     def all_genes(self, transcripts_only=True):
+        """Get all genes affected by all CNVs."""
         all_genes = {gene for cnv in self.cnvs for gene in cnv.genes
                      if gene.is_transcript() or not transcripts_only}
         return all_genes
 
+    def expand_hpo_terms(self, hpo_ontology):
+        expanded = set()
+        for hpo in self.hpo:
+            expanded.update({term for term in hpo.superclasses()})
+        self.hpo = expanded
+
+    def convert_birthday_to_datetime(self):
+        if not self.phenotypes:
+            return
+        if not self.phenotypes[0]["birthdate"]:
+            return
+        self.birthdate = datetime.strptime(
+            self.phenotypes[0]["birthdate"],
+            "%Y-%m-%d")
+        years = datetime.today().year - self.birthdate.year
+        if (datetime.today().month <= self.birthdate.year
+                and datetime.today().day < self.birthdate.day):
+            years -= 1
+        self.age = years
+        return
+
 
 class HI_Gene(Patient):
+    """Patient subclass for gene objects."""
+
     def __init__(self, ID):
         super().__init__(ID)
         self.score = None
         self.refined = False
+
 
 # %% Graph Stuff
 
@@ -1151,7 +1205,9 @@ def build_network_nodes2(comparison_table):
         group = comparison_table.patient_db[patient].origin
         ranges = []
         for cnv in comparison_table.patient_db[patient].cnvs:
-            ranges.append(f"{cnv.chromosome}:{cnv.range.start}:{cnv.range.stop}")
+            ranges.append(f"{cnv.chromosome}:"
+                          "{cnv.range.start}:"
+                          "{cnv.range.stop}")
         ranges = ";".join(ranges)
         color = colors[group]
         if group == "HI Gene":
@@ -1250,7 +1306,7 @@ def gene_comparison_heatmap(table):
     data_array = make_array(table)
 
     fig, ax = plt.subplots()
-    im = ax.imshow(data_array)
+    ax.imshow(data_array)
 
     # We want to show all ticks...
     ax.set_xticks(np.arange(len(table)))
@@ -1274,26 +1330,30 @@ def gene_comparison_heatmap(table):
     plt.show()
 
 
-def similarity_vs_hpo_scatter(patient_comparison):
-    points = []
-    for intersect in patient_comparison:
-        p1 = patient_comparison.patient_db[intersect.patients[0]]
-        p2 = patient_comparison.patient_db[intersect.patients[1]]
-        if is_gene(p1) or is_gene(p2) or p1.id == p2.id:
-            continue
-        points.append((intersect.gene_similarity, intersect.hpo_count))
-    points = list(zip(*points))
-    plt.scatter(*points)
-    plt.ylabel("Shared HPO terms", fontsize=24)
-    plt.xlabel("Shared genes (percent similarity)", fontsize=24)
-    plt.yticks(fontsize=20)
-    plt.xticks(fontsize=20)
+# def similarity_vs_hpo_scatter(patient_comparison):
+#     points = []
+#     for intersect in patient_comparison:
+#         p1 = patient_comparison.patient_db[intersect.patients[0]]
+#         p2 = patient_comparison.patient_db[intersect.patients[1]]
+#         if is_gene(p1) or is_gene(p2) or p1.id == p2.id:
+#             continue
+#         points.append((intersect.gene_similarity, intersect.hpo_count))
+#     points = list(zip(*points))
+#     plt.scatter(*points)
+#     plt.ylabel("Shared HPO terms", fontsize=24)
+#     plt.xlabel("Shared genes (percent similarity)", fontsize=24)
+#     plt.yticks(fontsize=20)
+#     plt.xticks(fontsize=20)
 
 
-def plot_individual_factors(patient_comparison):
+def plot_individual_factors(patient_comparison, percentage=True):
+    """Plot scatterplots for similarity vs. shared HPO terms."""
     plotters = [x for x in patient_comparison if not is_gene(x)]
     plotters = [x for x in plotters if x.patients[0] != x.patients[1]]
-    hpos = [x.hpo_count for x in plotters]
+    if percentage:
+        hpos = [x.hpo_similarity for x in plotters]
+    else:
+        hpos = [x.hpo_count for x in plotters]
     fig, (ax1, ax2, ax3) = plt.subplots(1, 3)
     ax1.scatter([x.length_similarity for x in plotters], hpos)
     ax2.scatter([x.loci_similarity for x in plotters], hpos)
@@ -1304,11 +1364,14 @@ def plot_individual_factors(patient_comparison):
     ax2.set_xlabel("Loci Similarity", fontsize=24)
     ax3.set_xlabel("Gene Similarity", fontsize=24)
 
+
 def make_cnv_histogram_info(patient_db, chromosome, genome_dict):
+    """Gather data on CNVs per megabase for a histogram."""
     cnvs = patient_db.cnvs[chromosome]
 
     bin_starts = range(1, genome_dict["6"].length, 1000000)
-    bin_counts = {range(bin_start, bin_start + 1000000): 0 for bin_start in bin_starts[:-1]}
+    bin_counts = {range(bin_start, bin_start + 1000000): 0
+                  for bin_start in bin_starts[:-1]}
     bin_counts[range(bin_starts[-1], genome_dict["6"].length + 1)] = 0
 
     for cnv in cnvs:
@@ -1317,7 +1380,9 @@ def make_cnv_histogram_info(patient_db, chromosome, genome_dict):
                 bin_counts[bin_range] += 1
     return bin_counts
 
+
 def plot_cnv_histogram(hist_info):
+    """Plot histogram of CNV coverage per megabase."""
     bins = [(x.start - 1)/1000000 for x in hist_info]
     heights = list(hist_info.values())
 
@@ -1327,7 +1392,8 @@ def plot_cnv_histogram(hist_info):
     plt.yticks(fontsize=30, fontname="Tahoma")
     plt.xlabel("Megabase", fontsize=36, fontname="Tahoma")
     plt.ylabel("Count", fontsize=36, fontname="Tahoma")
-    plt.title("CNV coverage per chromosome 6 megabase", fontsize=36, fontname="Tahoma")
+    plt.title("CNV coverage per chromosome 6 megabase",
+              fontsize=36, fontname="Tahoma")
 
     plt.show()
 
@@ -1404,4 +1470,4 @@ if __name__ == "__main__":
     # import sys
     # main(sys.argv[1], sys.argv[2])
     # genotypes, phenotypes, patients, geneset = test()
-    my_genotypes, my_phenotypes, my_patients, my_comparison, my_geneset, my_ontology, my_hi_genes, my_genomedict = test()
+    _, _, my_patients, my_comparison, my_geneset, my_ontology, _, my_genomedict = test()
