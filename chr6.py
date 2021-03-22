@@ -412,18 +412,23 @@ class ComparisonTable:
         table = pd.DataFrame(table, columns=["HPO_ID", "HPO_Name", "Known", "Count", "Frequency"])
         return table
 
-    def make_summary_table(self, predictions, threshold=0):
+    def make_summary_table(self, predictions):
         table = []
         for patient, results in predictions.items():
             known_count, found_perc, group_size, found_hpos = results
-            passing = sum([hpo.frequency >= threshold for hpo in found_hpos.values()
-                           if hpo.TP])
-            passing = passing / known_count
-            table.append([patient, known_count, found_perc, passing, group_size])
+            new_hpos = sum([not hpo.TP for hpo in found_hpos.values()])
+            # passing = sum([hpo.frequency >= threshold for hpo in found_hpos.values()
+            #                if hpo.TP])
+            # passing = passing / known_count
+            # table.append([patient, known_count, found_perc, passing, group_size])
+            table.append([patient, group_size, known_count,
+                          found_perc, None,
+                          new_hpos, None])
         table = pd.DataFrame(
             sorted(table, key=lambda x: x[0]),
-            columns=["ID", "Known_HPO_Terms", "Known_Found",
-                     f"Known_Found_Freq>{threshold}", "Group_Size"]
+            columns=["ID", "Group_Size", "Known_HPO_Terms",
+                     "Known_Found", "Known_Above_Threshold",
+                     "New_Found", "New_Above_Threshold"]
             )
         return table
 
@@ -435,9 +440,18 @@ class ComparisonTable:
             writer = pd.ExcelWriter(path, engine="xlsxwriter")
             close = True
 
-
         table.to_excel(writer, sheet_name=name, startrow=3, index=False)
         col_names = [{"header": col_name} for col_name in table.columns]
+        if name == "Summary":
+            formula = ('=COUNTIFS('
+                       'INDIRECT("Table_" & [@ID] & "[Frequency]"), ">=" & $B$2,'
+                       'INDIRECT("Table_" & [@ID] & "[Known]"), "=TRUE")'
+                       '/[@[Known_HPO_Terms]]')
+            formula2 = ('=COUNTIFS('
+                       'INDIRECT("Table_" & [@ID] & "[Frequency]"), ">=" & $B$2,'
+                       'INDIRECT("Table_" & [@ID] & "[Known]"), "=FALSE")')
+            col_names[4]["formula"] = formula
+            col_names[6]["formula"] = formula2
 
         workbook = writer.book
         perc_format = workbook.add_format({"num_format": 10})
@@ -447,8 +461,11 @@ class ComparisonTable:
         worksheet.write("A2", "Threshold:")
         worksheet.write("B2", threshold, perc_format)
 
+        table_name = "Table_" + name.replace("-", "_")
+
         worksheet.add_table(3, 0, table.shape[0]+3, table.shape[1]-1,
                             {"columns": col_names,
+                             "name": table_name,
                              "style": "Table Style Light 1"})
 
         empty = [None] * len(col_names)
@@ -476,36 +493,44 @@ class ComparisonTable:
             perc_format = workbook.add_format({"num_format": 10})
             green = workbook.add_format({'bg_color': '#C6EFCE',
                                          'font_color': '#006100'})
+            red = workbook.add_format({"bg_color": "#E6B8B7",
+                                       "font_color": "#C0504D"})
 
             # Add summary sheet at the beginning of the workbook.
-            table = self.make_summary_table(predictions, threshold)
-            self.write_excel_sheet(table=table, name="Summary", writer=writer,
-                                   formats=[None, None, perc_format, perc_format, None],
-                                   widths=[20]*4+[12])
+            # table = self.make_summary_table(predictions, threshold)
+            table = self.make_summary_table(predictions)
+            self.write_excel_sheet(table=table, name="Summary", writer=writer, threshold=threshold,
+                                   formats=[None, None, None, perc_format, perc_format, None, None],
+                                   widths=[20, 12, 20, 20, 25, 20, 25])
 
             # Make patient ID's clickable on summary page.
             worksheet = writer.sheets["Summary"]
             for i, patient in enumerate(table["ID"], start=4):
                 worksheet.write_url(i, 0, f"internal:{patient}!A1", string=patient)
 
-            for patient in table["ID"]:
-                worksheet = writer.sheets[patient]
-                worksheet.write_url(0, 4, "internal:Summary!A1", string="Home")
 
             # Write individual patient sheets.
             for patient_id in sorted(predictions):
                 table = self.predictions_as_df(patient_id, predictions, threshold)
                 freq_col = table.columns.get_loc("Frequency")
+                known_col = table.columns.get_loc("Known")
                 conditionals = [(4, freq_col, table.shape[0]+3, freq_col,
                                  {'type': 'cell',
                                   'criteria': ">=",
                                   'value': "'Summary'!$B$2",
-                                  'format': green})]
+                                  'format': green}),
+                                (4, known_col, table.shape[0]+3, known_col,
+                                 {'type': 'cell',
+                                  'criteria': "==",
+                                  'value': "FALSE",
+                                  'format': red})]
                 self.write_excel_sheet(table=table, name=patient_id,
                                        writer=writer, threshold="='Summary'!$B$2",
                                        formats=[None, None, None, None, perc_format],
                                        widths=[12, 50, 12, 12, 12],
                                        conditionals=conditionals)
+                worksheet = writer.sheets[patient_id]
+                worksheet.write_url(0, 4, "internal:Summary!A1", string="Home")
 
         except Exception as error:
             writer.close()
