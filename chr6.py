@@ -1,4 +1,8 @@
-"""The Chromosome 6 Project Data Management."""
+"""The Chromosome 6 Project - Data Management.
+
+@author: Ty Medina
+"""
+
 import csv
 from datetime import datetime
 import gzip
@@ -7,6 +11,7 @@ from math import log
 
 import matplotlib.pyplot as plt
 import numpy as np
+import pandas as pd
 from pronto import Ontology
 import mygene
 
@@ -122,144 +127,15 @@ def is_gene(gene):
     return False
 
 
-# %% Data Classes
-
-SequenceContig = namedtuple("SequenceContig",
-                            ["name", "length", "cumulative_start"])
-
-
-class GenomeDict:
-    """GATK-style genome dictionary containing contig names and lengths."""
-
-    def __init__(self, file=None):
-        self.sequences = {}
-        self.index = {}
-        self.total = 0
-
-        if file is not None:
-            self.sequences = self.read_genome_dict(file)
-            self.index = {name: i for i, name in enumerate(self.sequences)}
-            self.total = sum([seq.length for seq in self.sequences.values()])
-
-    @staticmethod
-    def read_genome_dict(file):
-        """Read in GATK genome dictionary file."""
-        with open(file) as infile:
-            lines = infile.readlines()
-        lines = [line for line in lines if line.startswith("@SQ")]
-        for i, line in enumerate(lines):
-            line = line.strip().split("\t")
-            line = [line[1].replace("SN:", "", 1), int(line[2].replace("LN:", "", 1)), 0]
-            if i != 0:
-                line[2] = lines[i - 1][2] + line[1]
-            lines[i] = SequenceContig(*line)
-        lines = {seq.name: seq for seq in lines}
-        return lines
-
-    def abs_pos(self, chromosome, position):
-        """Calculate absolute position from chromosome position.
-
-        Uses genome contig order to establish relative positon within
-        cumulative chromosome lengths.
-        """
-        return self[chromosome].cumulative_start + position
-
-    def __getitem__(self, key):
-        """Retrieve item using key."""
-        return self.sequences[key]
-
-
-class PatientIntersect:
-    """Record of similarity between two patients."""
-
-    def __init__(self, patient1, patient2,
-                 genes, gene_count, gene_similarity,
-                 hpos, hpo_count, hpo_similarity):
-        self.patients = [patient1, patient2]
-        self.genes = genes
-        self.gene_count = gene_count
-        self.gene_similarity = gene_similarity
-        self.hpos = hpos
-        self.hpo_count = hpo_count
-        self.hpo_similarity = hpo_similarity
-
-    def __repr__(self):
-        """Get official string representation."""
-        string = (f"PatientIntersect(patients={self.patients}, "
-                  f"gene_count={self.gene_count}, hpo_count={self.hpo_count})")
-        return string
-
-    def __str__(self):
-        """Get pretty-printing string representation."""
-        string = (f"{self.patients[0]} vs. {self.patients[1]}:\n"
-                  f"  Genes: {self.gene_count}\n"
-                  f"  HPO terms: {self.hpo_count}")
-        return string
-
-    def gene_info(self):
-        """Get gene portion of intersect."""
-        return self.genes, self.gene_count, self.gene_similarity
-
-    def hpo_info(self):
-        """Get HPO portion of intersect."""
-        return self.hpos, self.hpo_count, self.hpo_similarity
-
-
-class PatientIntersect2:
-    """Record of similarity between two patients."""
-
-    # pylint: disable=too-many-instance-attributes
-
-    def __init__(self, patient_1, patient_2,
-                 length_compare, loci_compare,
-                 gene_compare, hpo_compare):
-        self.patients = [patient_1, patient_2]
-
-        self.length_similarity = length_compare
-
-        self.loci_similarity = loci_compare[0]
-        self.loci_shared_size = loci_compare[1]
-
-        self.gene_similarity = gene_compare[0]
-        self.genes = gene_compare[1]
-        self.gene_count = len(gene_compare[1])
-
-        self.hpo_similarity = hpo_compare[0]
-        self.hpos = hpo_compare[1]
-        self.hpo_count = len(hpo_compare[1])
-
-    def __repr__(self):
-        """Get official string representation."""
-        string = (f"PatientIntersect(patients={self.patients}, "
-                  f"length_similarity={self.length_similarity}, "
-                  f"loci_similarity={self.loci_similarity}, "
-                  f"gene_similarity={self.gene_similarity}, "
-                  f"hpo_similarity={self.hpo_similarity})")
-        return string
-
-    def __str__(self):
-        """Get pretty-printing string representation."""
-        string = (f"Similarities of {self.patients[0]} vs. {self.patients[1]}:\n"
-                  f"  Genes: {self.gene_similarity}\n"
-                  f"  HPO terms: {self.hpo_similarity}\n"
-                  f"  Length: {self.length_similarity}\n"
-                  f"  Position: {self.loci_similarity}")
-        return string
-
-    def gene_info(self):
-        """Get gene portion of intersect."""
-        return self.genes, self.gene_count, self.gene_similarity
-
-    def hpo_info(self):
-        """Get HPO portion of intersect."""
-        return self.hpos, self.hpo_count, self.hpo_similarity
-
-
+# %% ComparisonTable
 # TODO: Add a method to add a patient.
 class ComparisonTable:
     """Data object holding all patient vs. patient comparisons."""
 
-    def __init__(self, patient_db):
+    def __init__(self, patient_db=None, comparison_table=None):
+        if comparison_table is not None:
+            self.read_from_existing(comparison_table)
+            return
         self.patient_db = patient_db
         self.raw = self.compare_patients()
         self.index = self.make_index()
@@ -268,6 +144,13 @@ class ComparisonTable:
 
         self.__iteri__ = 0
         self.__iterj__ = 0
+
+    def read_from_existing(self, comparison_table):
+        self.patient_db = comparison_table.patient_db
+        self.raw = comparison_table.raw
+        self.index = comparison_table.index
+        self.array = comparison_table.array
+        self.size = comparison_table.size
 
     def __iter__(self):
         """Initialize iterable."""
@@ -294,7 +177,7 @@ class ComparisonTable:
         gene_compare = cls.compare_genes(patient_1, patient_2)
         hpo_compare = cls.compare_hpos(patient_1, patient_2)
         comparison = PatientIntersect2(
-            patient_1.id, patient_2.id,
+            patient_1, patient_2,
             length_compare, loci_compare, gene_compare, hpo_compare
             )
         return comparison
@@ -397,48 +280,237 @@ class ComparisonTable:
                       "hpo_similarity", "hpo_count"]
         write_me = ["\t".join(["patient1", "patient2"] + properties) + "\n"]
         for intersect in self:
-            p1, p2 = [self.patient_db[p] for p in intersect.patients]
+            p1, p2 = intersect.patients
             if p1 == p2:
                 continue
             if (is_gene(p1) or is_gene(p2)) and patients_only:
                 continue
             this_intersect = "\t".join(
-                [f"{intersect.patients[0]}", f"{intersect.patients[1]}"]
+                [f"{intersect.patients[0].id}", f"{intersect.patients[1].id}"]
                 + [f"{intersect.__getattribute__(prop)}" for prop in properties]
                 ) + "\n"
             write_me.append(this_intersect)
         with open(outfile, "w") as out:
             out.writelines(write_me)
 
-    def make_predictions(self, patient_id, threshold=0.7):
-        index_patient = self.patient_db[patient_id]
-        intersections = self.lookup(patient_id)
+    def filter_patient_comparisons(self, patient_id, length_similarity=0,
+                                   loci_similarity=0, gene_similarity=0,
+                                   hpo_similarity=0):
+        patient1 = self.patient_db[patient_id]
+        intersections = self.lookup(patient_id, "all")
         filtered = []
-        for interesect in intersections:
-            other = self.patient_db[[patient for patient in intersect.patients
-                     if patient != patient_id][0]]
-            if patient_id == other:
+        for intersect in intersections:
+            if intersect.patients[0] == intersect.patients[1]:
                 continue
-            if not (is_patient(self.patient_db[patient1])
-                    and is_patient(self.patient_db[patient2])):
+
+            if patient1 != intersect.patients[0]:
+                patient2 = intersect.patients[0]
+            else:
+                patient2 = intersect.patients[1]
+
+            if not (is_patient(patient1) and is_patient(patient2)):
                 continue
-            if not intersect.gene_similarity >= threshold:
+
+            if not patient2.hpo:
                 continue
-            if not self.patient_db[patient1].hpo or not self.patient_db[patient2].hpo:
+
+            if not all([intersect.length_similarity >= length_similarity,
+                        intersect.loci_similarity >= loci_similarity,
+                        intersect.gene_similarity >= gene_similarity,
+                        intersect.hpo_similarity >= hpo_similarity]):
                 continue
-            for patient in intersect.patients:
-                if not self.patient_db[patient].hpo:
+
+            filtered.append(patient2)
+        return filtered
+
+    @staticmethod
+    def predict_phenotypes(comparison_group, show=10):
+        size = len(comparison_group)
+        if size == 0:
+            return dict()
+
+        all_hpo = {hpo: 0 for patient in comparison_group for hpo in patient.hpo}
+        for hpo in all_hpo:
+            for patient in comparison_group:
+                if hpo in patient.hpo:
+                    all_hpo[hpo] += 1
+        all_hpo = {hpo: (count, count/size) for hpo, count in all_hpo.items()}
+
+        if show == 0:
+            return all_hpo
+        if show == "all":
+            show = len(all_hpo)
+        string = "Top {show} phenotypes out of {len(all_hpo)}:\n"
+        for hpo, (count, freq) in sorted(all_hpo.items(), key=lambda x: x[1][0], reverse=True)[:show]:
+            string += f"{hpo.name}:    {count}/{size}    {freq:.2%}\n"
+        print(string)
+
+        return all_hpo
+
+    def test_predictions(self, patient_id, freq_threshold=0,
+                         length_similarity=0, loci_similarity=0,
+                         gene_similarity=0, hpo_similarity=0):
+
+        comparison_group = self.filter_patient_comparisons(
+            patient_id,
+            length_similarity,
+            loci_similarity,
+            gene_similarity,
+            hpo_similarity
+            )
+
+        predictions = self.predict_phenotypes(comparison_group, show=0)
+        test_hpos = self.patient_db[patient_id].hpo
+
+        predicted_hpos = {hpo: PredictInfo(count, freq, hpo in test_hpos)
+                          for hpo, (count, freq) in predictions.items()
+                          if freq >= freq_threshold}
+        true_positives = sum([info.TP for info in predicted_hpos.values()])
+        # found_hpos = {hpo: (count, freq) for hpo, (count, freq) in predictions.items()
+        #               if hpo in test_hpos and freq >= freq_threshold}
+
+        if not test_hpos:
+            percent_found = None
+        else:
+            percent_found = true_positives / len(test_hpos)
+
+        return len(test_hpos), percent_found, len(comparison_group), predicted_hpos
+
+    def test_all_predictions(self, filter_unknowns=True, freq_threshold=0,
+                             length_similarity=0, loci_similarity=0,
+                             gene_similarity=0, hpo_similarity=0):
+        all_predictions = {patient_id: self.test_predictions(
+            patient_id,
+            freq_threshold, length_similarity, loci_similarity,
+            gene_similarity, hpo_similarity
+            ) for patient_id in self.index}
+        if filter_unknowns:
+            all_predictions = {patient_id: results for patient_id, results in all_predictions.items()
+                               if results[0] > 0}
+        return all_predictions
+
+    def predictions_as_df(self, patient_id, predictions, threshold=0):
+        found_count, found_perc, group_size, found_hpos =  predictions[patient_id]
+        table = []
+        added = set()
+
+        for hpo, info in found_hpos.items():
+            added.add(hpo)
+            table.append([hpo.id, hpo.name, info.TP, info.count, info.frequency])
+
+        for hpo in self.patient_db[patient_id].hpo:
+            if hpo in added:
+                continue
+            table.append([hpo.id, hpo.name, True, 0, 0])
+            # if hpo in found_hpos:
+            #     table.append([hpo.id, hpo.name, found_hpos[hpo][1] >= threshold,
+            #                   found_hpos[hpo][0], found_hpos[hpo][1]])
+            # else:
+            #     table.append([hpo.id, hpo.name, False, 0, 0])
+
+        table.sort(key=lambda line: line[-1], reverse=True)
+        table = pd.DataFrame(table, columns=["HPO_ID", "HPO_Name", "Known", "Count", "Frequency"])
+        return table
+
+    def make_summary_table(self, predictions, threshold=0):
+        table = []
+        for patient, results in predictions.items():
+            known_count, found_perc, group_size, found_hpos = results
+            passing = sum([hpo.frequency >= threshold for hpo in found_hpos.values()
+                           if hpo.TP])
+            passing = passing / known_count
+            table.append([patient, known_count, found_perc, passing, group_size])
+        table = pd.DataFrame(
+            sorted(table, key=lambda x: x[0]),
+            columns=["ID", "Known_HPO_Terms", "Known_Found",
+                     f"Known_Found_Freq>{threshold}", "Group_Size"]
+            )
+        return table
+
+    @staticmethod
+    def write_excel_sheet(table, name, writer=None, path=None, threshold=0,
+                          formats=None, widths=None, conditionals=None):
+        close = False
+        if writer is None:
+            writer = pd.ExcelWriter(path, engine="xlsxwriter")
+            close = True
 
 
-                         and intersect.gene_similarity >= threshold)
-        intersections = [intersect for intersect in intersections
-                         if is_patient(self.patient_db[intersect.patients[0]])
-                         and is_patient(self.patient_db[intersect.patients[1]])
-                         and intersect.gene_similarity >= threshold]
-        intersections = [intersect for intersect in intersections
-                         if ]
+        table.to_excel(writer, sheet_name=name, startrow=3, index=False)
+        col_names = [{"header": col_name} for col_name in table.columns]
 
-        return intersections
+        workbook = writer.book
+        perc_format = workbook.add_format({"num_format": 10})
+
+        worksheet = writer.sheets[name]
+        worksheet.write("A1", name)
+        worksheet.write("A2", "Threshold:")
+        worksheet.write("B2", threshold, perc_format)
+
+        worksheet.add_table(3, 0, table.shape[0]+3, table.shape[1]-1,
+                            {"columns": col_names,
+                             "style": "Table Style Light 1"})
+
+        empty = [None] * len(col_names)
+        if formats is None:
+            formats = empty
+        if widths is None:
+            widths = empty
+        if conditionals is None:
+            conditionals = []
+
+        for i, (f, w) in enumerate(zip(formats, widths)):
+            worksheet.set_column(i, i, w, f)
+
+        for conditional in conditionals:
+            worksheet.conditional_format(*conditional)
+
+        if close:
+            writer.close()
+
+    def write_all_predictions_to_excel(self, predictions, path, threshold=0):
+        writer = pd.ExcelWriter(path, engine="xlsxwriter")
+
+        try:
+            workbook = writer.book
+            perc_format = workbook.add_format({"num_format": 10})
+            green = workbook.add_format({'bg_color': '#C6EFCE',
+                                         'font_color': '#006100'})
+
+            # Add summary sheet at the beginning of the workbook.
+            table = self.make_summary_table(predictions, threshold)
+            self.write_excel_sheet(table=table, name="Summary", writer=writer,
+                                   formats=[None, None, perc_format, perc_format, None],
+                                   widths=[20]*4+[12])
+
+            # Make patient ID's clickable on summary page.
+            worksheet = writer.sheets["Summary"]
+            for i, patient in enumerate(table["ID"], start=4):
+                worksheet.write_url(i, 0, f"internal:{patient}!A1", string=patient)
+
+            for patient in table["ID"]:
+                worksheet = writer.sheets[patient]
+                worksheet.write_url(0, 4, "internal:Summary!A1", string="Home")
+
+            # Write individual patient sheets.
+            for patient_id in sorted(predictions):
+                table = self.predictions_as_df(patient_id, predictions, threshold)
+                freq_col = table.columns.get_loc("Frequency")
+                conditionals = [(4, freq_col, table.shape[0]+3, freq_col,
+                                 {'type': 'cell',
+                                  'criteria': ">=",
+                                  'value': "'Summary'!$B$2",
+                                  'format': green})]
+                self.write_excel_sheet(table=table, name=patient_id,
+                                       writer=writer, threshold="='Summary'!$B$2",
+                                       formats=[None, None, None, None, perc_format],
+                                       widths=[12, 50, 12, 12, 12],
+                                       conditionals=conditionals)
+
+        except Exception as error:
+            writer.close()
+            raise error
+        writer.close()
 
 
 # XXX: This probably doesn't work anymore.
@@ -465,6 +537,141 @@ class ComparisonTable:
 #     with open(out, "w") as outfile:
 #         outfile.writelines(writer)
 
+
+# %% Data Classes
+PredictInfo = namedtuple("PredictionInfo",
+                         ["count", "frequency", "TP"])
+SequenceContig = namedtuple("SequenceContig",
+                            ["name", "length", "cumulative_start"])
+
+
+class GenomeDict:
+    """GATK-style genome dictionary containing contig names and lengths."""
+
+    def __init__(self, file=None):
+        self.sequences = {}
+        self.index = {}
+        self.total = 0
+
+        if file is not None:
+            self.sequences = self.read_genome_dict(file)
+            self.index = {name: i for i, name in enumerate(self.sequences)}
+            self.total = sum([seq.length for seq in self.sequences.values()])
+
+    @staticmethod
+    def read_genome_dict(file):
+        """Read in GATK genome dictionary file."""
+        with open(file) as infile:
+            lines = infile.readlines()
+        lines = [line for line in lines if line.startswith("@SQ")]
+        for i, line in enumerate(lines):
+            line = line.strip().split("\t")
+            line = [line[1].replace("SN:", "", 1), int(line[2].replace("LN:", "", 1)), 0]
+            if i != 0:
+                line[2] = lines[i - 1][2] + line[1]
+            lines[i] = SequenceContig(*line)
+        lines = {seq.name: seq for seq in lines}
+        return lines
+
+    def abs_pos(self, chromosome, position):
+        """Calculate absolute position from chromosome position.
+
+        Uses genome contig order to establish relative positon within
+        cumulative chromosome lengths.
+        """
+        return self[chromosome].cumulative_start + position
+
+    def __getitem__(self, key):
+        """Retrieve item using key."""
+        return self.sequences[key]
+
+
+# =============================================================================
+# class PatientIntersect:
+#     """Record of similarity between two patients."""
+#
+#     def __init__(self, patient1, patient2,
+#                  genes, gene_count, gene_similarity,
+#                  hpos, hpo_count, hpo_similarity):
+#         self.patients = [patient1, patient2]
+#         self.genes = genes
+#         self.gene_count = gene_count
+#         self.gene_similarity = gene_similarity
+#         self.hpos = hpos
+#         self.hpo_count = hpo_count
+#         self.hpo_similarity = hpo_similarity
+#
+#     def __repr__(self):
+#         """Get official string representation."""
+#         string = (f"PatientIntersect(patients={self.patients}, "
+#                   f"gene_count={self.gene_count}, hpo_count={self.hpo_count})")
+#         return string
+#
+#     def __str__(self):
+#         """Get pretty-printing string representation."""
+#         string = (f"{self.patients[0]} vs. {self.patients[1]}:\n"
+#                   f"  Genes: {self.gene_count}\n"
+#                   f"  HPO terms: {self.hpo_count}")
+#         return string
+#
+#     def gene_info(self):
+#         """Get gene portion of intersect."""
+#         return self.genes, self.gene_count, self.gene_similarity
+#
+#     def hpo_info(self):
+#         """Get HPO portion of intersect."""
+#         return self.hpos, self.hpo_count, self.hpo_similarity
+# =============================================================================
+
+
+class PatientIntersect2:
+    """Record of similarity between two patients."""
+
+    # pylint: disable=too-many-instance-attributes
+
+    def __init__(self, patient_1, patient_2,
+                 length_compare, loci_compare,
+                 gene_compare, hpo_compare):
+        self.patients = [patient_1, patient_2]
+
+        self.length_similarity = length_compare
+
+        self.loci_similarity = loci_compare[0]
+        self.loci_shared_size = loci_compare[1]
+
+        self.gene_similarity = gene_compare[0]
+        self.genes = gene_compare[1]
+        self.gene_count = len(gene_compare[1])
+
+        self.hpo_similarity = hpo_compare[0]
+        self.hpos = hpo_compare[1]
+        self.hpo_count = len(hpo_compare[1])
+
+    def __repr__(self):
+        """Get official string representation."""
+        string = (f"PatientIntersect(patients=[{self.patients[0].id}, {self.patients[1].id}], "
+                  f"length_similarity={self.length_similarity}, "
+                  f"loci_similarity={self.loci_similarity}, "
+                  f"gene_similarity={self.gene_similarity}, "
+                  f"hpo_similarity={self.hpo_similarity})")
+        return string
+
+    def __str__(self):
+        """Get pretty-printing string representation."""
+        string = (f"Similarities of {self.patients[0].id} vs. {self.patients[1].id}:\n"
+                  f"  Genes: {self.gene_similarity}\n"
+                  f"  HPO terms: {self.hpo_similarity}\n"
+                  f"  Length: {self.length_similarity}\n"
+                  f"  Position: {self.loci_similarity}")
+        return string
+
+    def gene_info(self):
+        """Get gene portion of intersect."""
+        return self.genes, self.gene_count, self.gene_similarity
+
+    def hpo_info(self):
+        """Get HPO portion of intersect."""
+        return self.hpos, self.hpo_count, self.hpo_similarity
 
 class GeneAnnotation:
     """Record of a single gene annotation."""
@@ -1107,6 +1314,11 @@ class Patient:
         self.birthdate = None
         self.age = None
 
+    def __eq__(self, other):
+        if not isinstance(other, self.__class__):
+            return False
+        return self.id == other.id
+
     def __repr__(self):
         """Construct string representation."""
         return (f"ID: {self.id}\n"
@@ -1219,8 +1431,12 @@ def build_network_nodes2(comparison_table):
                      f"Transcripts: {value}<br></p>")
         else:
             hi = 0
-            for intersect in comparison_table.array[comparison_table.index[patient]]:
-                patient2 = comparison_table.patient_db[intersect.patients[1]]
+            for intersect in comparison_table.lookup(patient, "all"):
+                if intersect.patients[1].id == patient:
+                    patient2 = intersect.patients[1]
+                else:
+                    patient2 = intersect.patients[0]
+                # patient2 = comparison_table.patient_db[intersect.patients[1]]
                 if (is_gene(patient2)
                         and intersect.gene_count > 0
                         and patient2.score <= 2):
@@ -1251,10 +1467,10 @@ def build_network_edges2(comparison_table):
     """Build patient-patient edge objects from comparison table."""
     edges = []
     for intersect in comparison_table:
-        if not intersect.gene_count or len(set(intersect.patients)) == 1:
+        if not intersect.gene_count or intersect.patients[0] == intersect.patients[1]:
             continue
-        id1 = intersect.patients[0]
-        id2 = intersect.patients[1]
+        id1 = intersect.patients[0].id
+        id2 = intersect.patients[1].id
         edge_id = f"{id1}_{id2}"
         gene_count = intersect.gene_count
         gene_sim = intersect.gene_similarity
@@ -1410,7 +1626,7 @@ def main(geno_file, pheno_file):
 def test():
     """Test run."""
     # Read genome dictionary.
-    print("Reading reference genome dicionary.")
+    print("Reading reference genome dictionary.")
     genomedict = GenomeDict("C:/Users/tyler/Documents/Chr6/human_g1k_v37_phiX.dict")
 
     # Read geneset.
@@ -1447,11 +1663,12 @@ def test():
     # Build patient objects.
     print("Building patient objects...")
     patients = DataManager.make_patients(genotypes, phenotypes, geneset,
-                                         hpos, ontology)
+                                         hpos, ontology, expand_hpos=True)
     patients.update(hi_genes)
     patients = PatientDatabase(patients)
     # patients = PatientDatabase({patient.id: patient for patient in list(patients.values())[:10]})
     # DataManager.print_summary_counts(patients)
+    print("Running comparisons...")
     comparison = ComparisonTable(patients)
     print("Done.")
     return (
@@ -1464,6 +1681,15 @@ def test():
         hi_genes,
         genomedict
         )
+
+
+def predict_test(comparison):
+    with open("C:/Users/tyler/Documents/Chr6/Predict_tests/test_patients.txt") as infile:
+        aafkes_patients = infile.readlines()
+    aafkes_patients = [x.strip() for x in aafkes_patients]
+    all_tests = comparison.test_all_predictions(gene_similarity=.7)
+    aafkes_tests = {x: y for x, y in all_tests.items() if x in aafkes_patients}
+    return all_tests, aafkes_tests
 
 
 if __name__ == "__main__":
