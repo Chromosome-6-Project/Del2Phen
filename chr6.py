@@ -490,11 +490,15 @@ class ComparisonTable:
 
         try:
             workbook = writer.book
+
             perc_format = workbook.add_format({"num_format": 10})
             green = workbook.add_format({'bg_color': '#C6EFCE',
                                          'font_color': '#006100'})
             red = workbook.add_format({"bg_color": "#E6B8B7",
                                        "font_color": "#C0504D"})
+            center_url = workbook.add_format({"center_across": True,
+                                              "font_color": "#0000FF",
+                                              "underline": True})
 
             # Add summary sheet at the beginning of the workbook.
             # table = self.make_summary_table(predictions, threshold)
@@ -507,7 +511,6 @@ class ComparisonTable:
             worksheet = writer.sheets["Summary"]
             for i, patient in enumerate(table["ID"], start=4):
                 worksheet.write_url(i, 0, f"internal:{patient}!A1", string=patient)
-
 
             # Write individual patient sheets.
             for patient_id in sorted(predictions):
@@ -530,7 +533,8 @@ class ComparisonTable:
                                        widths=[12, 50, 12, 12, 12],
                                        conditionals=conditionals)
                 worksheet = writer.sheets[patient_id]
-                worksheet.write_url(0, 4, "internal:Summary!A1", string="Home")
+                worksheet.write_url(0, 4, "internal:Summary!A1",
+                                    string="Home", cell_format=center_url)
 
         except Exception as error:
             writer.close()
@@ -1587,20 +1591,39 @@ def gene_comparison_heatmap(table):
 #     plt.xticks(fontsize=20)
 
 
-def plot_individual_factors(patient_comparison, percentage=True):
+def plot_individual_factors(comparison_table, percentage=True):
     """Plot scatterplots for similarity vs. shared HPO terms."""
-    plotters = [x for x in patient_comparison if not is_gene(x)]
-    plotters = [x for x in plotters if x.patients[0] != x.patients[1]]
-    if percentage:
-        hpos = [x.hpo_similarity for x in plotters]
-    else:
-        hpos = [x.hpo_count for x in plotters]
+    plotters = [intersect for intersect in comparison_table
+                if is_patient(intersect.patients[0])
+                and is_patient(intersect.patients[1])
+                and intersect.patients[0] != intersect.patients[1]
+                and intersect.patients[0].hpo and intersect.patients[1].hpo
+                and intersect.patients[0].cnvs and intersect.patients[1].cnvs]
+
+    # if percentage:
+    #     hpos = [x.hpo_similarity for x in plotters]
+    # else:
+    #     hpos = [x.hpo_count for x in plotters]
+
     fig, (ax1, ax2, ax3) = plt.subplots(1, 3)
-    ax1.scatter([x.length_similarity for x in plotters], hpos)
-    ax2.scatter([x.loci_similarity for x in plotters], hpos)
-    ax3.scatter([x.gene_similarity for x in plotters], hpos)
-    fig.suptitle("Similarity vs. Shared HPO Terms.", fontsize=30)
-    ax1.set_ylabel("Shared HPO terms", fontsize=24)
+
+    ax1.scatter(*list(zip(*[(x.length_similarity, x.hpo_similarity) for x in plotters if x.length_similarity > 0])))
+    ax2.scatter(*list(zip(*[(x.loci_similarity, x.hpo_similarity) for x in plotters if x.loci_similarity > 0])))
+    ax3.scatter(*list(zip(*[(x.gene_similarity, x.hpo_similarity) for x in plotters if x.gene_similarity > 0])))
+
+    # ax4.scatter(*list(zip(*[(x.length_similarity, x.hpo_count) for x in plotters if x.length_similarity > 0])))
+    # ax5.scatter(*list(zip(*[(x.loci_similarity, x.hpo_count) for x in plotters if x.loci_similarity > 0])))
+    # ax6.scatter(*list(zip(*[(x.gene_similarity, x.hpo_count) for x in plotters if x.gene_similarity > 0])))
+
+    # ax1.scatter([x.length_similarity for x in plotters], hpos)
+    # ax2.scatter([x.loci_similarity for x in plotters if x.loci_similarity > 0], hpos)
+    # ax3.scatter([x.gene_similarity for x in plotters if x.gene_similarity > 0], hpos)
+
+    fig.suptitle("CNV Similarity vs. Shared HPO Terms", fontsize=30)
+    y_label = "HPO term Jaccard similarity"
+
+    ax1.set_ylabel(y_label, fontsize=24)
+
     ax1.set_xlabel("Length Similarity", fontsize=24)
     ax2.set_xlabel("Loci Similarity", fontsize=24)
     ax3.set_xlabel("Gene Similarity", fontsize=24)
