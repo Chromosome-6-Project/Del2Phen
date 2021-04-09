@@ -12,7 +12,7 @@ from math import log
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-from pronto import Ontology
+from pronto import Ontology, Term
 import mygene
 
 REFERENCE_CHR = [str(i) for i in range(1, 23)] + ["X", "Y"]
@@ -241,8 +241,13 @@ class ComparisonTable:
     @staticmethod
     def compare_hpos(patient_1, patient_2):
         """Compare HPO terms between two patients."""
-        jaccard_index, intersect = jaccard(patient_1.hpo, patient_2.hpo)
+        hpo_set1 = {hpo for hpo, response in patient_1.hpo.items() if response == "T"}
+        hpo_set2 = {hpo for hpo, response in patient_2.hpo.items() if response == "T"}
+        jaccard_index, intersect = jaccard(hpo_set1, hpo_set2)
         return jaccard_index, intersect
+
+    # @staticmethod
+    # def compare_hpos_modified(patient_1, patient_2):
 
     def make_array(self):
         """Convert raw comparison dictionary to numpy array."""
@@ -323,107 +328,228 @@ class ComparisonTable:
             filtered.append(patient2)
         return filtered
 
+# =============================================================================
+#     @staticmethod
+#     def predict_phenotypes(comparison_group, show=10):
+#         size = len(comparison_group)
+#         if size == 0:
+#             return dict()
+#
+#         all_hpo = {hpo: 0 for patient in comparison_group for hpo in patient.hpo}
+#         for hpo in all_hpo:
+#             for patient in comparison_group:
+#                 if hpo in patient.hpo:
+#                     all_hpo[hpo] += 1
+#         all_hpo = {hpo: (count, count/size) for hpo, count in all_hpo.items()}
+#
+#         if show == 0:
+#             return all_hpo
+#         if show == "all":
+#             show = len(all_hpo)
+#         string = "Top {show} phenotypes out of {len(all_hpo)}:\n"
+#         for hpo, (count, freq) in sorted(all_hpo.items(), key=lambda x: x[1][0], reverse=True)[:show]:
+#             string += f"{hpo.name}:    {count}/{size}    {freq:.2%}\n"
+#         print(string)
+#
+#         return all_hpo
+# =============================================================================
+
     @staticmethod
-    def predict_phenotypes(comparison_group, show=10):
-        size = len(comparison_group)
-        if size == 0:
+    def predict_phenotypes2(comparison_group, show=10,
+                            additional_hpos=None, additional_groupname="Added"):
+        population = len(comparison_group)
+        if population == 0:
             return dict()
 
-        all_hpo = {hpo: 0 for patient in comparison_group for hpo in patient.hpo}
-        for hpo in all_hpo:
+        all_hpo = {hpo: {"t": 0, "f": 0, "unsure": 0, "na": 0, "group": "predicted"}
+                   for patient in comparison_group for hpo in patient.hpo.keys()}
+        if additional_hpos is not None:
+            all_hpo.update({hpo: {"t": 0, "f": 0, "unsure": 0, "na": 0, "group": additional_groupname}
+                            for hpo in additional_hpos})
+
+        for hpo, counts in all_hpo.items():
             for patient in comparison_group:
-                if hpo in patient.hpo:
-                    all_hpo[hpo] += 1
-        all_hpo = {hpo: (count, count/size) for hpo, count in all_hpo.items()}
+                # TODO: This is to make expanded HPOs work. But how should
+                # they be counted? This counts them as NAs.
+                # if hpo not in patient.hpo:
+                #     counts["na"] += 1
+                response = patient.hpo[hpo].lower()
+                counts[response] += 1
+
+        all_hpo = {hpo: TraitPrediction(hpo, hpo.name, population, *counts.values())
+                   for hpo, counts in all_hpo.items()
+                   if counts["group"] == additional_groupname or counts["t"] > 0}
 
         if show == 0:
             return all_hpo
+
         if show == "all":
             show = len(all_hpo)
-        string = "Top {show} phenotypes out of {len(all_hpo)}:\n"
-        for hpo, (count, freq) in sorted(all_hpo.items(), key=lambda x: x[1][0], reverse=True)[:show]:
-            string += f"{hpo.name}:    {count}/{size}    {freq:.2%}\n"
-        print(string)
+
+        print(f"\nTop {show} phenotypes out of {len(all_hpo)}:\n\n"
+              "Trait\tPop\tPop.Adjust\tFreq\tFreq.Adjust")
+        for trait_freq in sorted(all_hpo.values(), key=lambda x: x.true_count, reverse=True)[:show]:
+            print(trait_freq)
 
         return all_hpo
 
-    def test_predictions(self, patient_id, freq_threshold=0,
-                         length_similarity=0, loci_similarity=0,
-                         gene_similarity=0, hpo_similarity=0):
+# =============================================================================
+#     def test_predictions(self, patient_id, freq_threshold=0,
+#                          length_similarity=0, loci_similarity=0,
+#                          gene_similarity=0, hpo_similarity=0):
+#
+#         comparison_group = self.filter_patient_comparisons(
+#             patient_id,
+#             length_similarity,
+#             loci_similarity,
+#             gene_similarity,
+#             hpo_similarity
+#             )
+#
+#         predictions = self.predict_phenotypes(comparison_group, show=0)
+#         test_hpos = self.patient_db[patient_id].hpo
+#
+#         predicted_hpos = {hpo: PredictInfo(count, freq, hpo in test_hpos)
+#                           for hpo, (count, freq) in predictions.items()
+#                           if freq >= freq_threshold}
+#         true_positives = sum([info.TP for info in predicted_hpos.values()])
+#         # found_hpos = {hpo: (count, freq) for hpo, (count, freq) in predictions.items()
+#         #               if hpo in test_hpos and freq >= freq_threshold}
+#
+#         if not test_hpos:
+#             percent_found = None
+#         else:
+#             percent_found = true_positives / len(test_hpos)
+#
+#         return len(test_hpos), percent_found, len(comparison_group), predicted_hpos
+# =============================================================================
 
-        comparison_group = self.filter_patient_comparisons(
-            patient_id,
-            length_similarity,
-            loci_similarity,
-            gene_similarity,
-            hpo_similarity
-            )
+    def test_phenotype_prediction(self, patient_id, freq_threshold=0,
+                                  length_similarity=0, loci_similarity=0,
+                                  gene_similarity=0, hpo_similarity=0):
 
-        predictions = self.predict_phenotypes(comparison_group, show=0)
-        test_hpos = self.patient_db[patient_id].hpo
+        index_hpos = {hpo for hpo, response in self.patient_db[patient_id].hpo.items()
+                      if response == "T"}
 
-        predicted_hpos = {hpo: PredictInfo(count, freq, hpo in test_hpos)
-                          for hpo, (count, freq) in predictions.items()
-                          if freq >= freq_threshold}
-        true_positives = sum([info.TP for info in predicted_hpos.values()])
-        # found_hpos = {hpo: (count, freq) for hpo, (count, freq) in predictions.items()
-        #               if hpo in test_hpos and freq >= freq_threshold}
+        comparison_group = self.filter_patient_comparisons(patient_id, length_similarity,
+                                                           loci_similarity, gene_similarity,
+                                                           hpo_similarity)
+        predictions = self.predict_phenotypes2(comparison_group, show=0,
+                                               additional_hpos=index_hpos,
+                                               additional_groupname="index")
+        return predictions
 
-        if not test_hpos:
-            percent_found = None
-        else:
-            percent_found = true_positives / len(test_hpos)
+    def test_all_phenotype_predictions(self, filter_unknowns=True, freq_threshold=0,
+                                       length_similarity=0, loci_similarity=0,
+                                       gene_similarity=0, hpo_similarity=0):
+        all_predictions = {}
 
-        return len(test_hpos), percent_found, len(comparison_group), predicted_hpos
+        for patient_id in self.index:
+            if not is_patient(self.patient_db[patient_id]):
+                continue
+            prediction = self.test_phenotype_prediction(
+                patient_id, freq_threshold, length_similarity, loci_similarity,
+                gene_similarity, hpo_similarity
+                )
+            all_predictions[patient_id] = prediction
 
-    def test_all_predictions(self, filter_unknowns=True, freq_threshold=0,
-                             length_similarity=0, loci_similarity=0,
-                             gene_similarity=0, hpo_similarity=0):
-        all_predictions = {patient_id: self.test_predictions(
-            patient_id,
-            freq_threshold, length_similarity, loci_similarity,
-            gene_similarity, hpo_similarity
-            ) for patient_id in self.index}
         if filter_unknowns:
-            all_predictions = {patient_id: results for patient_id, results in all_predictions.items()
-                               if results[0] > 0}
+            all_predictions = {patient_id: results
+                               for patient_id, results in all_predictions.items()
+                               if len(results) > 0}
+
         return all_predictions
 
-    def predictions_as_df(self, patient_id, predictions, threshold=0):
-        found_count, found_perc, group_size, found_hpos =  predictions[patient_id]
+
+# =============================================================================
+#     def test_all_predictions(self, filter_unknowns=True, freq_threshold=0,
+#                              length_similarity=0, loci_similarity=0,
+#                              gene_similarity=0, hpo_similarity=0):
+#         all_predictions = {patient_id: self.test_predictions(
+#             patient_id,
+#             freq_threshold, length_similarity, loci_similarity,
+#             gene_similarity, hpo_similarity
+#             ) for patient_id in self.index}
+#         if filter_unknowns:
+#             all_predictions = {patient_id: results for patient_id, results in all_predictions.items()
+#                                if results[0] > 0}
+#         return all_predictions
+#
+#     def predictions_as_df(self, patient_id, predictions, threshold=0):
+#         found_count, found_perc, group_size, found_hpos =  predictions[patient_id]
+#         table = []
+#         added = set()
+#
+#         for hpo, info in found_hpos.items():
+#             added.add(hpo)
+#             table.append([hpo.id, hpo.name, info.TP, info.count, info.frequency])
+#
+#         for hpo in self.patient_db[patient_id].hpo:
+#             if hpo in added:
+#                 continue
+#             table.append([hpo.id, hpo.name, True, 0, 0])
+#             # if hpo in found_hpos:
+#             #     table.append([hpo.id, hpo.name, found_hpos[hpo][1] >= threshold,
+#             #                   found_hpos[hpo][0], found_hpos[hpo][1]])
+#             # else:
+#             #     table.append([hpo.id, hpo.name, False, 0, 0])
+#
+#         table.sort(key=lambda line: line[-1], reverse=True)
+#         table = pd.DataFrame(table, columns=["HPO_ID", "HPO_Name", "Known", "Count", "Frequency"])
+#         return table
+# =============================================================================
+
+    def convert_patient_predictions_to_df(self, predictions):
         table = []
-        added = set()
-
-        for hpo, info in found_hpos.items():
-            added.add(hpo)
-            table.append([hpo.id, hpo.name, info.TP, info.count, info.frequency])
-
-        for hpo in self.patient_db[patient_id].hpo:
-            if hpo in added:
-                continue
-            table.append([hpo.id, hpo.name, True, 0, 0])
-            # if hpo in found_hpos:
-            #     table.append([hpo.id, hpo.name, found_hpos[hpo][1] >= threshold,
-            #                   found_hpos[hpo][0], found_hpos[hpo][1]])
-            # else:
-            #     table.append([hpo.id, hpo.name, False, 0, 0])
-
-        table.sort(key=lambda line: line[-1], reverse=True)
-        table = pd.DataFrame(table, columns=["HPO_ID", "HPO_Name", "Known", "Count", "Frequency"])
+        for prediction in sorted(predictions.values(), key=lambda x: x.freq_adjusted, reverse=True):
+            table.append(prediction.make_table_row())
+        column_labels = [attr.title()
+                         for attr in list(predictions.values())[0].__dict__.keys()
+                         if not attr.startswith("_")]
+        table = pd.DataFrame(table, columns=column_labels)
         return table
 
-    def make_summary_table(self, predictions):
+    # def make_summary_table(self, predictions):
+    #     table = []
+    #     for patient, results in predictions.items():
+    #         known_count, found_perc, group_size, found_hpos = results
+    #         new_hpos = sum([not hpo.TP for hpo in found_hpos.values()])
+    #         # passing = sum([hpo.frequency >= threshold for hpo in found_hpos.values()
+    #         #                if hpo.TP])
+    #         # passing = passing / known_count
+    #         # table.append([patient, known_count, found_perc, passing, group_size])
+    #         table.append([patient, group_size, known_count,
+    #                       found_perc, None,
+    #                       new_hpos, None])
+    #     table = pd.DataFrame(
+    #         sorted(table, key=lambda x: x[0]),
+    #         columns=["ID", "Group_Size", "Known_HPO_Terms",
+    #                  "Known_Found", "Known_Above_Threshold",
+    #                  "New_Found", "New_Above_Threshold"]
+    #         )
+    #     return table
+
+    def make_summary_table(self, patient_predictions):
         table = []
-        for patient, results in predictions.items():
-            known_count, found_perc, group_size, found_hpos = results
-            new_hpos = sum([not hpo.TP for hpo in found_hpos.values()])
-            # passing = sum([hpo.frequency >= threshold for hpo in found_hpos.values()
-            #                if hpo.TP])
-            # passing = passing / known_count
-            # table.append([patient, known_count, found_perc, passing, group_size])
-            table.append([patient, group_size, known_count,
-                          found_perc, None,
-                          new_hpos, None])
+        for patient, predictions in patient_predictions.items():
+            predictions = list(predictions.values())
+
+            population = predictions[0].population
+            median_adjusted_population = np.median(
+                [pred.population_adjusted for pred in predictions]
+                )
+
+            known = [pred for pred in predictions if pred.group == "index"]
+            known_count = len(known)
+            known_found = sum(1 for pred in known if pred._found) / known_count
+            # known_above_thresh = (sum(1 for pred in known
+            #                           if pred.found and pred.freq_adjusted >= threshold)
+            #                       / known_found)
+
+            new_count = sum(1 for pred in predictions if pred._found and pred.group == "predicted")
+
+            table.append([patient, population, known_count, known_found, None,
+                          new_count, None])
         table = pd.DataFrame(
             sorted(table, key=lambda x: x[0]),
             columns=["ID", "Group_Size", "Known_HPO_Terms",
@@ -444,12 +570,12 @@ class ComparisonTable:
         col_names = [{"header": col_name} for col_name in table.columns]
         if name == "Summary":
             formula = ('=COUNTIFS('
-                       'INDIRECT("Table_" & [@ID] & "[Frequency]"), ">=" & $B$2,'
-                       'INDIRECT("Table_" & [@ID] & "[Known]"), "=TRUE")'
+                       'INDIRECT("Table_" & [@ID] & "[Freq_Adjusted]"), ">=" & $B$2,'
+                       'INDIRECT("Table_" & [@ID] & "[Group]"), "=index")'
                        '/[@[Known_HPO_Terms]]')
             formula2 = ('=COUNTIFS('
-                       'INDIRECT("Table_" & [@ID] & "[Frequency]"), ">=" & $B$2,'
-                       'INDIRECT("Table_" & [@ID] & "[Known]"), "=FALSE")')
+                       'INDIRECT("Table_" & [@ID] & "[Freq_Adjusted]"), ">=" & $B$2,'
+                       'INDIRECT("Table_" & [@ID] & "[Group]"), "=predicted")')
             col_names[4]["formula"] = formula
             col_names[6]["formula"] = formula2
 
@@ -501,7 +627,6 @@ class ComparisonTable:
                                               "underline": True})
 
             # Add summary sheet at the beginning of the workbook.
-            # table = self.make_summary_table(predictions, threshold)
             table = self.make_summary_table(predictions)
             self.write_excel_sheet(table=table, name="Summary", writer=writer, threshold=threshold,
                                    formats=[None, None, None, perc_format, perc_format, None, None],
@@ -514,23 +639,26 @@ class ComparisonTable:
 
             # Write individual patient sheets.
             for patient_id in sorted(predictions):
-                table = self.predictions_as_df(patient_id, predictions, threshold)
-                freq_col = table.columns.get_loc("Frequency")
-                known_col = table.columns.get_loc("Known")
+                table = self.convert_patient_predictions_to_df(predictions[patient_id])
+
+                # Setup conditional formatting.
+                freq_col = table.columns.get_loc("Freq_Adjusted")
+                group_col = table.columns.get_loc("Group")
                 conditionals = [(4, freq_col, table.shape[0]+3, freq_col,
                                  {'type': 'cell',
                                   'criteria': ">=",
                                   'value': "'Summary'!$B$2",
                                   'format': green}),
-                                (4, known_col, table.shape[0]+3, known_col,
+                                (4, group_col, table.shape[0]+3, group_col,
                                  {'type': 'cell',
                                   'criteria': "==",
-                                  'value': "FALSE",
+                                  'value': '"predicted"',
                                   'format': red})]
+
                 self.write_excel_sheet(table=table, name=patient_id,
                                        writer=writer, threshold="='Summary'!$B$2",
-                                       formats=[None, None, None, None, perc_format],
-                                       widths=[12, 50, 12, 12, 12],
+                                       formats=[None]*8 + [perc_format, None, perc_format],
+                                       widths=[12, 50] + [12]*9,
                                        conditionals=conditionals)
                 worksheet = writer.sheets[patient_id]
                 worksheet.write_url(0, 4, "internal:Summary!A1",
@@ -568,6 +696,61 @@ class ComparisonTable:
 
 
 # %% Data Classes
+
+class TraitPrediction:
+    def __init__(self, trait_id, trait_name, population, true, false,
+                 unsure, na, group=None):
+        self.trait_id = trait_id
+        self.trait_name = trait_name
+        self.group = group
+        self.population = population
+        self.true_count = true
+        self.false_count = false
+        self.unsure_count = unsure
+        self.na_count = na
+        self._found = False
+
+        if self.population == 0:
+            self.freq = 0
+        else:
+            self.freq = self.true_count/self.population
+
+        self.population_adjusted = self.true_count + self.false_count
+        if self.population_adjusted == 0:
+            self.freq_adjusted = 0
+        else:
+            self.freq_adjusted = self.true_count/self.population_adjusted
+
+        if self.true_count > 0:
+            self._found = True
+
+
+    def __str__(self):
+        string = (f"{self.trait_name}\t{self.population}\t{self.population_adjusted}\t"
+                  f"{self.freq}\t{self.freq_adjusted}")
+        return string
+
+    def __repr__(self):
+        string = "TraitPrediction("
+        attrs = []
+        for attr, value in self.__dict__.items():
+            if isinstance(value, float):
+                value = round(value, 3)
+            attrs.append(f"{attr}={value}")
+        string = string + ", ".join(attrs) + ")"
+        return string
+
+    def make_table_row(self):
+        row = []
+        for attr, value in self.__dict__.items():
+            if attr.startswith("_"):
+                continue
+            if isinstance(value, Term):
+                row.append(value.id)
+                continue
+            row.append(value)
+        return row
+
 PredictInfo = namedtuple("PredictionInfo",
                          ["count", "frequency", "TP"])
 SequenceContig = namedtuple("SequenceContig",
@@ -899,6 +1082,13 @@ class DataManager:
             new_data[new_patient["label"]] = new_patient
         return new_data
 
+    @staticmethod
+    def fix_patient_hpos2(data):
+        """Change Molgenis-styled HPO terms to OBO HPO terms."""
+        new_data = {entry["label"]: {x.replace("_", ":"): y for x, y in list(entry.items())[1:]}
+                    for entry in data}
+        return new_data
+
     @classmethod
     def fix_genotype_data(cls, data):
         """Apply all data fixes."""
@@ -925,13 +1115,15 @@ class DataManager:
             for patient in patients.values():
                 if patient.id not in hpos:
                     continue
-                patient_hpos = []
-                for hpo_id, value in hpos[patient.id].items():
-                    if hpo_id == "label":
-                        continue
-                    if value == "T":
-                        patient_hpos.append(ontology[hpo_id])
-                patient.hpo = patient_hpos
+                patient.hpo = {ontology[hpo_id]: response
+                               for hpo_id, response in hpos[patient.id].items()}
+                # patient_hpos = []
+                # for hpo_id, value in hpos[patient.id].items():
+                #     if hpo_id == "label":
+                #         continue
+                #     if value == "T":
+                #         patient_hpos.append(ontology[hpo_id])
+                # patient.hpo = patient_hpos
                 if expand_hpos:
                     patient.expand_hpo_terms(ontology)
         for patient in patients.values():
@@ -1338,7 +1530,7 @@ class Patient:
         self.cnvs = []
         # self.affected_genes = {}
         # self.affected_gene_ids = {}
-        self.hpo = []
+        self.hpo = {}
         self.origin = None
         self.birthdate = None
         self.age = None
@@ -1394,11 +1586,17 @@ class Patient:
                      if gene.is_transcript() or not transcripts_only}
         return all_genes
 
+    def get_true_hpos(self):
+        trues = {term for term, response in self.hpo.items()
+                 if response == "T"}
+        return trues
+
     def expand_hpo_terms(self, hpo_ontology):
-        expanded = set()
-        for hpo in self.hpo:
-            expanded.update({term for term in hpo.superclasses()})
-        self.hpo = expanded
+        expanded = {parent for term, response in self.hpo.items()
+                    for parent in term.superclasses()
+                    if response == "T"}
+        for hpo in expanded:
+            self.hpo[hpo] = "T"
 
     def convert_birthday_to_datetime(self):
         if not self.phenotypes:
@@ -1698,7 +1896,7 @@ def test():
     # Read patient HPO terms.
     print("Reading patient HPO data...")
     hpos = DataManager.read_data("C:/Users/tyler/Documents/Chr6/c6_research_patients_2020-10-28_11_27_04.csv")
-    hpos = DataManager.fix_patient_hpos(hpos)
+    hpos = DataManager.fix_patient_hpos2(hpos)
 
     # Make HI Gene objects.
     print("Reading HI gene information...")
@@ -1711,7 +1909,7 @@ def test():
     # Build patient objects.
     print("Building patient objects...")
     patients = DataManager.make_patients(genotypes, phenotypes, geneset,
-                                         hpos, ontology, expand_hpos=True)
+                                         hpos, ontology, expand_hpos=False)
     patients.update(hi_genes)
     patients = PatientDatabase(patients)
     # patients = PatientDatabase({patient.id: patient for patient in list(patients.values())[:10]})
@@ -1735,7 +1933,7 @@ def predict_test(comparison):
     with open("C:/Users/tyler/Documents/Chr6/Predict_tests/test_patients.txt") as infile:
         aafkes_patients = infile.readlines()
     aafkes_patients = [x.strip() for x in aafkes_patients]
-    all_tests = comparison.test_all_predictions(gene_similarity=.7)
+    all_tests = comparison.test_all_phenotype_predictions(gene_similarity=.7)
     aafkes_tests = {x: y for x, y in all_tests.items() if x in aafkes_patients}
     return all_tests, aafkes_tests
 
