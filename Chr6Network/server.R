@@ -87,7 +87,7 @@ shinyServer(function(input, output, session) {
     max_val <- ceiling(max(df$gene_sim) * 100)
     sliderInput(
       inputId = "sim_slider",
-      label = "Gene Similarity Filter:",
+      label = "Similarity Score Filter:",
       min = 0,
       max = 100,
       value = c(0, 100),
@@ -318,7 +318,7 @@ shinyServer(function(input, output, session) {
         byrow = T
       ), stringsAsFactors = FALSE)
       colnames(info) <- colnames(nodedata())
-      info <- info[info$group != "HI Gene", -8 ]
+      info <- info[info$group != "HI Gene", c(-6, -8) ]
       # View(info)
       info
     }
@@ -331,8 +331,21 @@ shinyServer(function(input, output, session) {
         byrow = T
       ), stringsAsFactors = FALSE)
       colnames(info) <- colnames(nodedata())
-      info <- info[info$group == "HI Gene", -8 ]
+      info <- info[info$group == "HI Gene", c(-6, -8) ]
       info
+    }
+  })
+  
+  output$node_subnet_data <- renderDataTable({
+    if (!is.null(input$network_proxy_selected)) {
+      if (input$network_proxy_selected != "") {
+        info <- nodedata()
+        info <- info[info$label %in% input$network_proxy_highlight_color_id, c(-6, -8)]
+        info <- info[info$group != "HI Gene",]
+        info
+      }
+      # print(input$network_proxy_selected)
+      # print(paste(input$network_proxy_highlight_color_id, collapse = ", "))
     }
   })
 })
