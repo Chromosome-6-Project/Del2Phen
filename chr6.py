@@ -8,12 +8,15 @@ from datetime import datetime
 import gzip
 from collections import namedtuple
 from math import log
+import pickle
 
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 from pronto import Ontology, Term
 import mygene
+
+from gene_set import *
 
 REFERENCE_CHR = [str(i) for i in range(1, 23)] + ["X", "Y"]
 
@@ -499,6 +502,7 @@ class ComparisonTable:
 #         return table
 # =============================================================================
 
+
     def convert_patient_predictions_to_df(self, predictions):
         table = []
         for prediction in sorted(predictions.values(), key=lambda x: x.freq_adjusted, reverse=True):
@@ -541,7 +545,10 @@ class ComparisonTable:
 
             known = [pred for pred in predictions if pred.group == "index"]
             known_count = len(known)
-            known_found = sum(1 for pred in known if pred._found) / known_count
+            if known_count == 0:
+                known_found = 0
+            else:
+                known_found = sum(1 for pred in known if pred._found) / known_count
             # known_above_thresh = (sum(1 for pred in known
             #                           if pred.found and pred.freq_adjusted >= threshold)
             #                       / known_found)
@@ -751,6 +758,21 @@ class TraitPrediction:
             row.append(value)
         return row
 
+
+class PredictionDatabase:
+    def __init__(self, predictions):
+        self.predictions = predictions
+
+    def __getitem__(self, key):
+        """Retrieve prediction using patient ID."""
+        return self.predictions[key]
+
+    def get_sizes(self):
+        sizes = {patient: list(predictions.values())[0].population
+                 for patient, predictions in self.predictions.items()}
+        return sizes
+
+
 PredictInfo = namedtuple("PredictionInfo",
                          ["count", "frequency", "TP"])
 SequenceContig = namedtuple("SequenceContig",
@@ -884,95 +906,6 @@ class PatientIntersect2:
     def hpo_info(self):
         """Get HPO portion of intersect."""
         return self.hpos, self.hpo_count, self.hpo_similarity
-
-class GeneAnnotation:
-    """Record of a single gene annotation."""
-
-    # pylint: disable=too-many-instance-attributes
-
-    def __init__(self, chromosome, source, feature, start, end, score, strand,
-                 frame, gene_id=None, gene_name=None, transcript_id=None,
-                 exon_id=None, exon_number=None):
-        self.chromosome = chromosome
-        self.source = source
-        self.feature = feature
-        self.range = range(start, end + 1)
-        self.score = score
-        self.strand = strand
-        self.frame = frame
-        self.gene_id = gene_id
-        self.gene_name = gene_name
-        self.transcript_id = transcript_id
-        self.exon_id = exon_id
-        self.exon_number = exon_number
-        self._hash = hash(str(self.__dict__))
-
-    def __repr__(self):
-        """Get official string representation."""
-        string = ("GeneAnnotation("
-                  f"gene_id={self.gene_id}, "
-                  f"locus={self.chromosome}:{self.range.start}-{self.range.stop - 1}"
-                  f"")
-        return string
-
-    def __hash__(self):
-        """Hash str represenation of object dictionary."""
-        return self._hash
-
-    def is_transcript(self):
-        """Test if gene feature is transcript."""
-        return self.feature == "transcript"
-
-
-class GeneSet:
-    """Database of gene annotations."""
-
-    def __init__(self, file=None, genes_only=True):
-        self.path = file
-        self.genes = []
-        self.gene_ids = []
-
-        if self.path:
-            self.genes = self.read_genes(self.path)
-
-    @staticmethod
-    def read_genes(file):
-        """Read gene annotations from file."""
-        with gzip.open(file) as infile:
-            data = infile.readlines()
-            # i = 0
-            # while i < 50:
-            #     data.append(infile.readline())
-            #     i += 1
-        data = [line.decode().rstrip(";\n").split("\t")
-                for line in data]
-        data = [line for line in data
-                if line[0].lstrip("chr") in REFERENCE_CHR]
-        for line in data:
-            line[0] = line[0].lstrip("chr")
-            line[3] = int(line[3])
-            line[4] = int(line[4])
-            ids = {}
-            for field in line[-1].split(";"):
-                field = field.strip().replace('"', "").split(" ")
-                ids[field[0]] = field[1]
-            line[-1] = ids
-        data = [GeneAnnotation(*line[:-1], **line[-1]) for line in data]
-        data_map = {chrom: [] for chrom in {gene.chromosome for gene in data}}
-        for gene in data:
-            data_map[gene.chromosome].append(gene)
-        return data_map
-
-    def get_locus(self, chromosome, start, stop=None):
-        """Return all gene annotations that interect a base or range."""
-        if stop is None:
-            stop = start
-        query = range(start, stop + 1)
-        results = []
-        for gene in self.genes[chromosome]:
-            if overlap(query, gene.range):
-                results.append(gene)
-        return results
 
 
 class DataManager:
@@ -1187,7 +1120,7 @@ class DataManager:
                 hi_gene[:3] + ["HI Gene"]
                 )))
             this_hi.cnvs = this_hi.extract_cnvs()
-            this_hi.identify_gene_overlaps(geneset, True)
+            this_hi.identify_gene_overlaps(geneset)
 
             symbol_results = cls.find_symbol_in_results(geneID, gene_lookup)
             if symbol_results is not None:
@@ -1358,7 +1291,7 @@ class CNV:
     def __repr__(self):
         """Make string representation of object."""
         string = (
-            f"CNV({self.change}:"
+            f"CNV({self.change}: "
             f"{self.chromosome}:{self.range.start}-{self.range.stop})"
             )
         return string
@@ -1382,7 +1315,6 @@ class PatientDatabase:
         self.index = self.make_index()
         self.cnvs = self.organize_cnvs()
         self.size = len(self.patients)
-        print(self.summary())
 
     def __getitem__(self, key):
         """Get patient by patient ID."""
@@ -1394,7 +1326,7 @@ class PatientDatabase:
         return self
 
     def __next__(self):
-        """Iterate 2-axis iterable."""
+        """Iterate iterable."""
         if self.__iteri__ == self.size:
             raise StopIteration
         result = self.patients[self.index[self.__iteri__]]
@@ -1416,6 +1348,10 @@ class PatientDatabase:
         for cnv in cnvs:
             cnv_dict[cnv.chromosome].append(cnv)
         return cnv_dict
+
+    def add_predictions(self, predictions):
+        for patient in self:
+            patient.predictions = predictions[patient.id]
 
     def summary(self):
         """Calculate summary counts."""
@@ -1531,6 +1467,8 @@ class Patient:
         # self.affected_genes = {}
         # self.affected_gene_ids = {}
         self.hpo = {}
+        self.predictions = {}
+
         self.origin = None
         self.birthdate = None
         self.age = None
@@ -1570,20 +1508,15 @@ class Patient:
                   for chromosome, cnv_ranges in ranges.items()}
         return ranges
 
-    def identify_gene_overlaps(self, gene_set, transcripts_only=True):
+    def identify_gene_overlaps(self, gene_set):
         """Set genes affected per CNV."""
         for cnv in self.cnvs:
-            results = gene_set.get_locus(cnv.chromosome,
-                                         cnv.range.start,
-                                         cnv.range.stop)
+            cnv.genes = gene_set.get_locus(cnv.chromosome, cnv.range.start,
+                                           cnv.range.stop)
 
-            cnv.genes = [x for x in results
-                         if not transcripts_only or x.feature == "transcript"]
-
-    def all_genes(self, transcripts_only=True):
+    def all_genes(self):
         """Get all genes affected by all CNVs."""
-        all_genes = {gene for cnv in self.cnvs for gene in cnv.genes
-                     if gene.is_transcript() or not transcripts_only}
+        all_genes = {gene for cnv in self.cnvs for gene in cnv.genes}
         return all_genes
 
     def get_true_hpos(self):
@@ -1655,7 +1588,7 @@ def build_network_nodes2(comparison_table):
             title = (f"<p>{patient}<br>"
                      f"Group: {group}<br>"
                      f"HI score: {hi}<br>"
-                     f"Transcripts: {value}<br></p>")
+                     f"Genes: {value}<br></p>")
         else:
             hi = 0
             for intersect in comparison_table.lookup(patient, "all"):
@@ -1671,7 +1604,7 @@ def build_network_nodes2(comparison_table):
             value = lookup.gene_count
             title = (f"<p>{patient}<br>"
                      f"Group: {group}<br>"
-                     f"Affected transcripts: {value}<br>"
+                     f"Affected genes: {value}<br>"
                      f"HPO terms: {lookup.hpo_count}</p>")
         node = Node(patient, patient, group, color, value, title, hi, ranges)
         nodes[patient] = node
@@ -1876,8 +1809,10 @@ def test():
     genomedict = GenomeDict("C:/Users/tyler/Documents/Chr6/human_g1k_v37_phiX.dict")
 
     # Read geneset.
-    print("Reading gene set...")
-    geneset = GeneSet("C:/Users/tyler/Documents/Chr6/hg19.ensGene.gtf.gz")
+    print("Loading gene set...")
+    with open("C:/Users/tyler/Documents/Chr6/GeneSets/hg19.ensGene.pkl", "rb") as infile:
+        geneset = pickle.load(infile)
+    # geneset = GeneSet("C:/Users/tyler/Documents/Chr6/hg19.ensGene.gtf.gz")
 
     # Read HPO ontology.
     print("Loading Human Phenotype Ontology...")
