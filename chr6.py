@@ -7,7 +7,8 @@ import csv
 from datetime import datetime
 import gzip
 from collections import namedtuple
-from math import log
+from math import log, sqrt
+import os
 import pickle
 
 import matplotlib.pyplot as plt
@@ -129,6 +130,9 @@ def is_gene(gene):
         return True
     return False
 
+def are_patients(patients):
+    return all((is_patient(patient) for patient in patients))
+
 
 # %% ComparisonTable
 # TODO: Add a method to add a patient.
@@ -143,6 +147,7 @@ class ComparisonTable:
         self.raw = self.compare_patients()
         self.index = self.make_index()
         self.array = self.make_array()
+        self.patient_array = self.make_patient_only_array()
         self.size = len(self.index)
 
         self.__iteri__ = 0
@@ -279,6 +284,14 @@ class ComparisonTable:
         if pid1 not in self.index:
             raise KeyError("ID not found.")
         return self.array[self.index[pid1]][self.index[pid2]]
+    
+    def make_patient_only_array(self):
+        patient_comparisons = [y for x in self.array for y in x
+                               if are_patients(y.patients)]
+        dims = int(sqrt(len(patient_comparisons)))
+        array = np.asarray(patient_comparisons, dtype=self.array.dtype)
+        array.shape = [dims, dims]
+        return array
 
     def write_all_comparisons(self, outfile, patients_only=True):
         """Write comparison results to TSV file."""
@@ -918,7 +931,7 @@ class DataManager:
     def read_data(cls, data_file):
         """Import general CSV data."""
         data = []
-        with open(data_file) as infile:
+        with open(data_file, encoding="utf-8") as infile:
             reader = csv.DictReader(infile, delimiter=",", quotechar='"')
             for row in reader:
                 for k, v in row.items():
@@ -1223,7 +1236,7 @@ class Cytoband:
 class Cytomap:
     """Cytogenetic banding map of a genome."""
 
-    def __init__(self, file="C:/Users/tyler/Documents/cytoBand.txt"):
+    def __init__(self, file="C:/Users/Ty/Documents/cytoBand.txt"):
         self.path = file
         self.cytobands = self.make_cytobands(self.path)
 
@@ -1564,7 +1577,7 @@ Edge = namedtuple("Edge", ["edge_id", "id1", "id2", "width",
                            "color", "title", "sim"])
 
 
-def build_network_nodes2(comparison_table):
+def build_network_nodes(comparison_table, patients_only=False):
     """Build patient node objects from comparison table."""
     colors = {"Literature case report": "blue",
               "Parental uploaded array report": "pink",
@@ -1573,13 +1586,16 @@ def build_network_nodes2(comparison_table):
 
     nodes = {}
     for patient in comparison_table.index:
+        if (not is_patient(comparison_table.patient_db[patient])
+            and patients_only):
+            continue            
         lookup = comparison_table.lookup(patient)
         group = comparison_table.patient_db[patient].origin
         ranges = []
         for cnv in comparison_table.patient_db[patient].cnvs:
             ranges.append(f"{cnv.chromosome}:"
-                          "{cnv.range.start}:"
-                          "{cnv.range.stop}")
+                          f"{cnv.range.start}:"
+                          f"{cnv.range.stop}")
         ranges = ";".join(ranges)
         color = colors[group]
         if group == "HI Gene":
@@ -1611,7 +1627,7 @@ def build_network_nodes2(comparison_table):
     return nodes
 
 
-def write_network_nodes2(nodes, out, normalize=True):
+def write_network_nodes(nodes, out, normalize=True):
     """Write patient nodes to CSV file."""
     writer = ["id,label,group,color,value,title,hi,ranges\n"]
     for node in sorted(list(nodes.values()), key=lambda x: x[0]):
@@ -1623,10 +1639,12 @@ def write_network_nodes2(nodes, out, normalize=True):
         outfile.writelines(writer)
 
 
-def build_network_edges2(comparison_table):
+def build_network_edges(comparison_table, patients_only=False):
     """Build patient-patient edge objects from comparison table."""
     edges = []
     for intersect in comparison_table:
+        if not are_patients(intersect.patients) and patients_only:
+            continue
         if not intersect.gene_count or intersect.patients[0] == intersect.patients[1]:
             continue
         id1 = intersect.patients[0].id
@@ -1646,7 +1664,7 @@ def build_network_edges2(comparison_table):
     return edges
 
 
-def write_network_edges2(edges, out, normalize=True):
+def write_network_edges(edges, out, normalize=True):
     """Write patient-patient edges to CSV file."""
     writer = ["id,from,to,width,color,title,gene_sim\n"]
     for edge in edges:
@@ -1657,6 +1675,29 @@ def write_network_edges2(edges, out, normalize=True):
     with open(out, "w") as outfile:
         outfile.writelines(writer)
 
+
+def write_network_files(comparison_table, out_dir=None, patients_only=False,
+                        normalize=True):
+    if out_dir is None:
+        out_dir = ("C:/Users/Ty/Documents/Chr6/Network/"
+                   + datetime.today().strftime("%Y_%m_%d"))
+    if not os.path.isdir(out_dir):
+        os.makedirs(out_dir)
+        
+    node_path = f"{out_dir}/nodes_"
+    edge_path = f"{out_dir}/edges_"
+    file_no = 1
+    while os.path.isfile(f"{node_path}{file_no}.csv"):
+        file_no += 1
+    node_path = f"{node_path}{file_no}.csv"
+    edge_path = f"{edge_path}{file_no}.csv"
+    
+    nodes = build_network_nodes(comparison_table, patients_only)
+    edges = build_network_edges(comparison_table, patients_only)
+    write_network_nodes(nodes, node_path, normalize)
+    write_network_edges(edges, edge_path, normalize)
+    return nodes, edges
+    
 
 # XXX: Probably deprecated.
 def make_array(table):
@@ -1806,42 +1847,43 @@ def test():
     """Test run."""
     # Read genome dictionary.
     print("Reading reference genome dictionary.")
-    genomedict = GenomeDict("C:/Users/tyler/Documents/Chr6/human_g1k_v37_phiX.dict")
+    genomedict = GenomeDict("C:/Users/Ty/Documents/Chr6/human_g1k_v37_phiX.dict")
 
     # Read geneset.
     print("Loading gene set...")
-    with open("C:/Users/tyler/Documents/Chr6/GeneSets/hg19.ensGene.pkl", "rb") as infile:
+    with open("C:/Users/Ty/Documents/Chr6/GeneSets/hg19.ensGene.pkl", "rb") as infile:
         geneset = pickle.load(infile)
-    # geneset = GeneSet("C:/Users/tyler/Documents/Chr6/hg19.ensGene.gtf.gz")
+    # geneset = GeneSet("C:/Users/Ty/Documents/Chr6/hg19.ensGene.gtf.gz")
 
     # Read HPO ontology.
     print("Loading Human Phenotype Ontology...")
-    ontology = Ontology("C:/Users/tyler/Documents/Chr6/HPO/hp2.obo")
+    ontology = Ontology("C:/Users/Ty/Documents/Chr6/HPO/hp2.obo")
 
     # Read patient genotypes.
     print("Reading patient genotype data...")
-    genotypes = DataManager.read_data("C:/Users/tyler/Documents/Chr6/genotypes.csv")
+    genotypes = DataManager.read_data("C:/Users/Ty/Documents/Chr6/genotypes.csv")
     genotypes = DataManager.fix_genotype_data(genotypes)
     # genotypes = trim_chromosome_names(genotypes)
 
     # Read patient phenotypes.
     print("Reading patient phenotype data...")
-    phenotypes = DataManager.read_data("C:/Users/tyler/Documents/Chr6/phenotypes.csv")
+    phenotypes = DataManager.read_data("C:/Users/Ty/Documents/Chr6/phenotypes.csv")
 
     # Read patient HPO terms.
     print("Reading patient HPO data...")
-    hpos = DataManager.read_data("C:/Users/tyler/Documents/Chr6/c6_research_patients_2020-10-28_11_27_04.csv")
+    hpos = DataManager.read_data("C:/Users/Ty/Documents/Chr6/c6_research_patients_2020-10-28_11_27_04.csv")
     hpos = DataManager.fix_patient_hpos2(hpos)
 
     # Make HI Gene objects.
     print("Reading HI gene information...")
     mg = mygene.MyGeneInfo()
-    hi_genes = DataManager.read_HI_genes("C:/Users/tyler/Documents/Chr6/HI_chr6.bed")
+    hi_genes = DataManager.read_HI_genes("C:/Users/Ty/Documents/Chr6/HI_chr6.bed")
     symbol_lookup = DataManager.symbol_lookup_multi(mg, list(hi_genes.keys()))
     hi_genes = DataManager.make_HI_objects(hi_genes, geneset, symbol_lookup)
     hi_genes = {x: y for x, y in hi_genes.items() if y.refined}
 
     # Build patient objects.
+    # !!!: This is where you can choose wether or not to expand HPO terms.
     print("Building patient objects...")
     patients = DataManager.make_patients(genotypes, phenotypes, geneset,
                                          hpos, ontology, expand_hpos=False)
@@ -1865,7 +1907,7 @@ def test():
 
 
 def predict_test(comparison):
-    with open("C:/Users/tyler/Documents/Chr6/Predict_tests/test_patients.txt") as infile:
+    with open("C:/Users/Ty/Documents/Chr6/Predict_tests/test_patients.txt") as infile:
         aafkes_patients = infile.readlines()
     aafkes_patients = [x.strip() for x in aafkes_patients]
     all_tests = comparison.test_all_phenotype_predictions(gene_similarity=.7)
