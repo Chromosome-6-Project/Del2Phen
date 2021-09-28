@@ -284,7 +284,7 @@ class ComparisonTable:
         if pid1 not in self.index:
             raise KeyError("ID not found.")
         return self.array[self.index[pid1]][self.index[pid2]]
-    
+
     def make_patient_only_array(self):
         patient_comparisons = [y for x in self.array for y in x
                                if are_patients(y.patients)]
@@ -1588,7 +1588,7 @@ def build_network_nodes(comparison_table, patients_only=False):
     for patient in comparison_table.index:
         if (not is_patient(comparison_table.patient_db[patient])
             and patients_only):
-            continue            
+            continue
         lookup = comparison_table.lookup(patient)
         group = comparison_table.patient_db[patient].origin
         ranges = []
@@ -1683,7 +1683,7 @@ def write_network_files(comparison_table, out_dir=None, patients_only=False,
                    + datetime.today().strftime("%Y_%m_%d"))
     if not os.path.isdir(out_dir):
         os.makedirs(out_dir)
-        
+
     node_path = f"{out_dir}/nodes_"
     edge_path = f"{out_dir}/edges_"
     file_no = 1
@@ -1691,13 +1691,13 @@ def write_network_files(comparison_table, out_dir=None, patients_only=False,
         file_no += 1
     node_path = f"{node_path}{file_no}.csv"
     edge_path = f"{edge_path}{file_no}.csv"
-    
+
     nodes = build_network_nodes(comparison_table, patients_only)
     edges = build_network_edges(comparison_table, patients_only)
     write_network_nodes(nodes, node_path, normalize)
     write_network_edges(edges, edge_path, normalize)
     return nodes, edges
-    
+
 
 # XXX: Probably deprecated.
 def make_array(table):

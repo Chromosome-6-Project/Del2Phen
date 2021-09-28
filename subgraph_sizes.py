@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 """Chromosome 6 Project - Filter Effects on Subgraph Sizes.
+
 Created on Fri Sep 17 11:54:00 2021
 
 @author: Ty
@@ -23,5 +24,3 @@ def make_nx_graph(nodes, edges):
     graph.add_nodes_from(nodes)
     graph.add_edges_from(edges)
     return graph
-
-
