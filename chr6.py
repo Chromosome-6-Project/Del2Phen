@@ -1679,7 +1679,7 @@ def write_network_edges(edges, out, normalize=True):
 def write_network_files(comparison_table, out_dir=None, patients_only=False,
                         normalize=True):
     if out_dir is None:
-        out_dir = ("C:/Users/Ty/Documents/Chr6/Network/"
+        out_dir = ("/home/tyler/Documents/Chr6_docs/Network/"
                    + datetime.today().strftime("%Y_%m_%d"))
     if not os.path.isdir(out_dir):
         os.makedirs(out_dir)
@@ -1843,41 +1843,41 @@ def main(geno_file, pheno_file):
     DataManager.print_summary_counts(patients)
 
 
-def test():
+def test(working_dir="/home/tyler/Documents/Chr6_docs"):
     """Test run."""
     # Read genome dictionary.
     print("Reading reference genome dictionary.")
-    genomedict = GenomeDict("C:/Users/Ty/Documents/Chr6/human_g1k_v37_phiX.dict")
+    genomedict = GenomeDict(f"{working_dir}/human_g1k_v37_phiX.dict")
 
     # Read geneset.
     print("Loading gene set...")
-    with open("C:/Users/Ty/Documents/Chr6/GeneSets/hg19.ensGene.pkl", "rb") as infile:
+    with open(f"{working_dir}/GeneSets/hg19.ensGene.pkl", "rb") as infile:
         geneset = pickle.load(infile)
     # geneset = GeneSet("C:/Users/Ty/Documents/Chr6/hg19.ensGene.gtf.gz")
 
     # Read HPO ontology.
     print("Loading Human Phenotype Ontology...")
-    ontology = Ontology("C:/Users/Ty/Documents/Chr6/HPO/hp2.obo")
+    ontology = Ontology(f"{working_dir}/HPO/hp2.obo")
 
     # Read patient genotypes.
     print("Reading patient genotype data...")
-    genotypes = DataManager.read_data("C:/Users/Ty/Documents/Chr6/genotypes.csv")
+    genotypes = DataManager.read_data(f"{working_dir}/genotypes.csv")
     genotypes = DataManager.fix_genotype_data(genotypes)
     # genotypes = trim_chromosome_names(genotypes)
 
     # Read patient phenotypes.
     print("Reading patient phenotype data...")
-    phenotypes = DataManager.read_data("C:/Users/Ty/Documents/Chr6/phenotypes.csv")
+    phenotypes = DataManager.read_data(f"{working_dir}/phenotypes.csv")
 
     # Read patient HPO terms.
     print("Reading patient HPO data...")
-    hpos = DataManager.read_data("C:/Users/Ty/Documents/Chr6/c6_research_patients_2020-10-28_11_27_04.csv")
+    hpos = DataManager.read_data(f"{working_dir}/c6_research_patients_2020-10-28_11_27_04.csv")
     hpos = DataManager.fix_patient_hpos2(hpos)
 
     # Make HI Gene objects.
     print("Reading HI gene information...")
     mg = mygene.MyGeneInfo()
-    hi_genes = DataManager.read_HI_genes("C:/Users/Ty/Documents/Chr6/HI_chr6.bed")
+    hi_genes = DataManager.read_HI_genes(f"{working_dir}/HI_chr6.bed")
     symbol_lookup = DataManager.symbol_lookup_multi(mg, list(hi_genes.keys()))
     hi_genes = DataManager.make_HI_objects(hi_genes, geneset, symbol_lookup)
     hi_genes = {x: y for x, y in hi_genes.items() if y.refined}
@@ -1906,8 +1906,8 @@ def test():
         )
 
 
-def predict_test(comparison):
-    with open("C:/Users/Ty/Documents/Chr6/Predict_tests/test_patients.txt") as infile:
+def predict_test(comparison, patient_list="C:/Users/Ty/Documents/Chr6/Predict_tests/test_patients.txt"):
+    with open(patient_list) as infile:
         aafkes_patients = infile.readlines()
     aafkes_patients = [x.strip() for x in aafkes_patients]
     all_tests = comparison.test_all_phenotype_predictions(gene_similarity=.7)
