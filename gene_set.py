@@ -1,13 +1,12 @@
+#!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""Gene annotations.
-
-Created on Mon Apr 26 15:19:06 2021
+"""The Chromosome 6 Project - Gene annotations.
 
 @author: T.D. Medina
 """
 
 import gzip
-from chr6 import overlap, REFERENCE_CHR
+from utilities import overlap, REFERENCE_CHR
 
 
 # %% Annotation Types

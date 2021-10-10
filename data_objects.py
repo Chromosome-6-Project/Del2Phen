@@ -5,12 +5,19 @@
 @author: T.D. Medina
 """
 
+from collections import namedtuple
 import csv
 from datetime import datetime
 
-from chr6 import REFERENCE_CHR
-import gene_set
-from utilities import is_gene, is_patient, merge_range_list, overlap
+from utilities import (
+    merge_range_list,
+    overlap,
+    REFERENCE_CHR,
+    )
+
+
+SequenceContig = namedtuple("SequenceContig",
+                            ["name", "length", "cumulative_start"])
 
 
 class GenomeDict:
@@ -37,7 +44,7 @@ class GenomeDict:
             line = [line[1].replace("SN:", "", 1), int(line[2].replace("LN:", "", 1)), 0]
             if i != 0:
                 line[2] = lines[i - 1][2] + line[1]
-            lines[i] = gene_set.SequenceContig(*line)
+            lines[i] = SequenceContig(*line)
         lines = {seq.name: seq for seq in lines}
         return lines
 
@@ -365,11 +372,11 @@ class Patient:
                   for chromosome, cnv_ranges in ranges.items()}
         return ranges
 
-    def identify_gene_overlaps(self, gene_set):
+    def identify_gene_overlaps(self, gene_set_obj):
         """Set genes affected per CNV."""
         for cnv in self.cnvs:
-            cnv.genes = gene_set.get_locus(cnv.chromosome, cnv.range.start,
-                                           cnv.range.stop)
+            cnv.genes = gene_set_obj.get_locus(cnv.chromosome, cnv.range.start,
+                                               cnv.range.stop)
 
     def all_genes(self):
         """Get all genes affected by all CNVs."""
@@ -411,3 +418,25 @@ class HI_Gene(Patient):
         super().__init__(ID)
         self.score = None
         self.refined = False
+
+
+# %% Type Checks
+def is_patient(patient):
+    """Check if object is a Patient object.
+
+    HI_Gene objects will still return False.
+    """
+    if not isinstance(patient, HI_Gene) and isinstance(patient, Patient):
+        return True
+    return False
+
+
+def is_gene(gene):
+    """Check if object is a HI_Gene object."""
+    if isinstance(gene, HI_Gene):
+        return True
+    return False
+
+
+def are_patients(patients):
+    return all((is_patient(patient) for patient in patients))
