@@ -12,6 +12,24 @@ from utilities import overlap, is_patient
 
 
 # XXX: Deprecated.
+def make_array(table):
+    """Make array from comparisons."""
+    array = []
+    for pid in table:
+        values = []
+        for p2 in table:
+            if pid == p2:
+                values.append(1)
+            elif p2 in table[pid]:
+                values.append(table[pid][p2])
+            else:
+                values.append(table[p2][pid])
+        array.append(values)
+    array = np.array(array)
+    return array
+
+
+# XXX: Deprecated.
 def gene_comparison_heatmap(table):
     """Plot heatmap of gene comparisons."""
     data_array = make_array(table)
