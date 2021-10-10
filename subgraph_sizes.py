@@ -50,52 +50,53 @@ def get_subnet_sizes(graph):
 
 
 # Create figure
-fig = go.Figure()
+def plot_histograms_with_slider(graph):
+    fig = go.Figure()
 
-for threshold in np.arange(0, 1.05, .05):
+    for threshold in np.arange(0, 1.05, .05):
 
-    sizes = get_subnet_sizes(filter_graph_edges(nx_graph, gene_threshold=threshold))
+        sizes = get_subnet_sizes(filter_graph_edges(graph, gene_threshold=threshold))
 
-    fig.add_trace(
-        go.Histogram(
-            x=sizes,
-            visible=False,
-            xbins=dict(
-                start=0,
-                end=500,
-                size=2),
-            autobinx=False,
-            alignmentgroup=0,
-            name="",
-            hovertemplate="Size Range: %{x}<br>Count: %{y}<extra></extra>",
+        fig.add_trace(
+            go.Histogram(
+                x=sizes,
+                visible=False,
+                xbins=dict(
+                    start=0,
+                    end=500,
+                    size=2),
+                autobinx=False,
+                alignmentgroup=0,
+                name="",
+                hovertemplate="Size Range: %{x}<br>Count: %{y}<extra></extra>",
+                )
             )
+
+    # Make 10th trace visible
+    fig.data[0].visible = True
+
+    # Create and add slider
+    steps = []
+    for i in range(len(fig.data)):
+        step = dict(
+            method="update",
+            args=[{"visible": [False] * len(fig.data)},
+                  {"title": f"Number of groups of size n with gene similarity threshold of {i*.05:.0%}"}],  # layout attribute
+            label=f"{i*.05:.0%}"
         )
+        step["args"][0]["visible"][i] = True  # Toggle i'th trace to "visible"
+        steps.append(step)
 
-# Make 10th trace visible
-fig.data[0].visible = True
+    sliders = [dict(
+        active=0,
+        currentvalue={"prefix": "Threshold: "},
+        pad={"t": 50},
+        steps=steps
+    )]
 
-# Create and add slider
-steps = []
-for i in range(len(fig.data)):
-    step = dict(
-        method="update",
-        args=[{"visible": [False] * len(fig.data)},
-              {"title": f"Number of groups of size n with gene similarity threshold of {i*.05:.0%}"}],  # layout attribute
-        label=f"{i*.05:.0%}"
+    fig.update_layout(
+        sliders=sliders,
+        bargap=0.1
     )
-    step["args"][0]["visible"][i] = True  # Toggle i'th trace to "visible"
-    steps.append(step)
 
-sliders = [dict(
-    active=0,
-    currentvalue={"prefix": "Threshold: "},
-    pad={"t": 50},
-    steps=steps
-)]
-
-fig.update_layout(
-    sliders=sliders,
-    bargap=0.1
-)
-
-fig.show()
+    fig.show()
