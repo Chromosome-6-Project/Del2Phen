@@ -1,28 +1,27 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
 """The Chromosome 6 Project - Data Management.
 
-@author: Ty Medina
+@author: T.D. Medina
 """
 
 import csv
-from datetime import datetime
-import gzip
 from collections import namedtuple
-from math import log, sqrt
-import os
+from math import sqrt
 import pickle
 
-import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 from pronto import Ontology, Term
 import mygene
 
-from gene_set import *
-
-REFERENCE_CHR = [str(i) for i in range(1, 23)] + ["X", "Y"]
+from data_objects import Patient, HI_Gene, GenomeDict, PatientDatabase
 
 
 # %% Utilities
+REFERENCE_CHR = [str(i) for i in range(1, 23)] + ["X", "Y"]
+
+
 def jaccard(set1, set2):
     """Calculate Jaccard Index of two sets."""
     if isinstance(set1, (int, float)) and isinstance(set2, (int, float)):
@@ -130,11 +129,301 @@ def is_gene(gene):
         return True
     return False
 
+
 def are_patients(patients):
     return all((is_patient(patient) for patient in patients))
 
 
-# %% ComparisonTable
+class DataManager:
+    """Collection of Chromosome 6 Project data handling methods."""
+
+    def __init__(self):
+        pass
+
+    @classmethod
+    def read_data(cls, data_file):
+        """Import general CSV data."""
+        data = []
+        with open(data_file, encoding="utf-8") as infile:
+            reader = csv.DictReader(infile, delimiter=",", quotechar='"')
+            for row in reader:
+                for k, v in row.items():
+                    if not v:
+                        row[k] = None
+                    else:
+                        row[k] = v.replace("\n", " ")
+                        row[k] = row[k].replace("\t", "")
+                data.append(row)
+        data = cls.coerce_booleans(data)
+        return data
+
+    @staticmethod
+    def write_table(data, filename):
+        """Write CSV data."""
+        writer = ["\t".join(data[0].keys()) + "\n"]
+        for entry in data:
+            writer.append("\t".join([str(value) for value in entry.values()])
+                          + "\n")
+        with open(filename, "w") as outfile:
+            outfile.writelines(writer)
+
+    @staticmethod
+    def coerce_booleans(data):
+        """Replace True/False and Yes/No strings with bools."""
+        coerced = data
+        for entry in coerced:
+            for k, v in entry.items():
+                if not v:
+                    continue
+                if v.lower() in ["true", "yes"]:
+                    entry[k] = True
+                elif v.lower() in ["false", "no"]:
+                    entry[k] = False
+        return coerced
+
+    @staticmethod
+    def fix_hg19_positions(data):
+        """Fill missing position data, if available, and convert to int."""
+        fixed = data
+        start_report = "Start position in report"
+        start_convert = "Start positie in Hg19"
+        stop_report = "Stop position in report"
+        stop_convert = "Stop positie in Hg19"
+
+        for entry in fixed:
+            build = entry["Human genome build version"]
+            for reported, converted in [(start_report, start_convert),
+                                        (stop_report, stop_convert)]:
+                reported_value = entry[reported]
+                converted_value = entry[converted]
+
+                # Try to fill missing if an hg19 position was already reported.
+                if not converted_value:
+                    # If both positions are missing, skip this record.
+                    if not reported_value:
+                        continue
+                    # If not build hg19, skip this record.
+                    if build != "hg19/NCBI37":
+                        continue
+                    entry[converted] = reported_value
+
+                # Clean up value and convert to integer.
+                try:
+                    new_int = entry[converted].replace(" ", "")
+                    new_int = new_int.replace(",", "")
+                    new_int = int(new_int)
+                    entry[converted] = new_int
+                except ValueError as err:
+                    print(f"Could not parse {err}")
+        return fixed
+
+    @staticmethod
+    def trim_chromosome_names(data):
+        """Remove 'chr' from contig names."""
+        trimmed = data
+        for entry in trimmed:
+            if not entry["Chromosome"]:
+                continue
+            if entry["Chromosome"].lower().startswith("chr"):
+                entry["Chromosome"] = entry["Chromosome"].strip("chrCHR")
+        return trimmed
+
+    @staticmethod
+    def fix_patient_hpos(data):
+        """Change Molgenis-styled HPO terms to OBO HPO terms."""
+        # old_keys = list(data[0].keys())
+        new_data = {}
+        # new_data = {patient["label"]: patient for patient in data}
+        for patient in data:
+            new_patient = dict(patient)
+            for key in patient:
+                new_patient[key.replace("_", ":")] = new_patient.pop(key)
+            new_data[new_patient["label"]] = new_patient
+        return new_data
+
+    @staticmethod
+    def fix_patient_hpos2(data):
+        """Change Molgenis-styled HPO terms to OBO HPO terms."""
+        new_data = {entry["label"]: {x.replace("_", ":"): y for x, y in list(entry.items())[1:]}
+                    for entry in data}
+        return new_data
+
+    @classmethod
+    def fix_genotype_data(cls, data):
+        """Apply all data fixes."""
+        fixed = cls.trim_chromosome_names(data)
+        fixed = cls.fix_hg19_positions(fixed)
+        return fixed
+
+    @staticmethod
+    def make_patients(genotypes, phenotypes, geneset=None, hpos=None,
+                      ontology=None, expand_hpos=True):
+        """Construct Patient objects from data."""
+        subjects = ({record["subject"] for record in genotypes}
+                    | {record["owner"] for record in phenotypes})
+        patients = {subject: Patient(subject) for subject in subjects}
+        for genotype in genotypes:
+            patients[genotype["subject"]].genotypes.append(genotype)
+        for phenotype in phenotypes:
+            patients[phenotype["owner"]].phenotypes.append(phenotype)
+        if geneset:
+            for patient in patients.values():
+                patient.cnvs = patient.extract_cnvs()
+                patient.identify_gene_overlaps(geneset)
+        if ontology and hpos:
+            for patient in patients.values():
+                if patient.id not in hpos:
+                    continue
+                patient.hpo = {ontology[hpo_id]: response
+                               for hpo_id, response in hpos[patient.id].items()}
+                # patient_hpos = []
+                # for hpo_id, value in hpos[patient.id].items():
+                #     if hpo_id == "label":
+                #         continue
+                #     if value == "T":
+                #         patient_hpos.append(ontology[hpo_id])
+                # patient.hpo = patient_hpos
+                if expand_hpos:
+                    patient.expand_hpo_terms(ontology)
+        for patient in patients.values():
+            if patient.genotypes:
+                patient.origin = patient.genotypes[0]["origin info"]
+            patient.convert_birthday_to_datetime()
+        return patients
+
+    @staticmethod
+    def print_summary_counts(patients):
+        """Print a summary of genotype and phenotype counts."""
+        size = len(patients.values())
+        sums = [(len(patient.genotypes), len(patient.phenotypes))
+                for patient in patients.values()]
+        print(f"Patients: {size}")
+        print("---------------------")
+        print(f"{'Genotypes':13}{'Phenotypes':14}Counts")
+        for geno, pheno in sorted(list(set(sums)), key=lambda x: f"{x[0]}_{x[1]}"):
+            print(f"{geno:<13}{pheno:<14}{sums.count((geno,pheno)):3}")
+
+    @staticmethod
+    def make_UCSC_browser_tracks(patients, out, filter_chrom=None):
+        """Write UCSC BED file of patient CNVs."""
+        writer = ["browser hide all position chr6\n"]
+        patient_list = sorted(
+            [patient for patient in patients.values() if patient.cnvs],
+            key=lambda x: x.cnvs[0].range.start
+            )
+        for i, patient in enumerate(patient_list):
+            patient_writer = [f"track name=Patient_{i} visibility=2\n"
+                              f"#chrom\tchromStart\tchromEnd\tname\n"]
+            for cnv in patient.cnvs:
+                patient_writer.append(
+                    f"chr{cnv.chromosome}\t{cnv.range.start}\t"
+                    f"{cnv.range.stop - 1}\t{str(cnv.change).replace(' ', '')}\n")
+            writer += patient_writer
+        with open(out, "w") as outfile:
+            outfile.writelines(writer)
+
+    @staticmethod
+    def read_HI_genes(file):
+        """Read HI gene information file."""
+        with open(file) as infile:
+            infile.readline()
+            data = infile.readlines()
+        data = [x.lstrip("chr").rstrip("\n").split("\t") for x in data]
+        data = {x[3].split("|")[0]: [x[0], int(x[1]), int(x[2]),
+                                     float(x[3].split("|")[-1].rstrip("%"))]
+                for x in data}
+        return data
+
+# !!!
+    @classmethod
+    def make_HI_objects(cls, hi_genes, geneset, gene_lookup):
+        """Construct HI_Gene objects from HI gene info."""
+        hi_gene_objs = {}
+        for geneID, hi_gene in hi_genes.items():
+            this_hi = HI_Gene(geneID)
+            this_hi.genotypes.append(dict(zip(
+                ["Chromosome", "Start positie in Hg19", "Stop positie in Hg19", "imbalance"],
+                hi_gene[:3] + ["HI Gene"]
+                )))
+            this_hi.cnvs = this_hi.extract_cnvs()
+            this_hi.identify_gene_overlaps(geneset)
+
+            symbol_results = cls.find_symbol_in_results(geneID, gene_lookup)
+            if symbol_results is not None:
+                refine = [gene for gene in this_hi.cnvs[0].genes
+                          if gene.gene_id in symbol_results]
+                if not refine:
+                    print(f"Warning: No refined matches for {geneID}.")
+                else:
+                    this_hi.cnvs[0].genes = refine
+                    this_hi.refined = True
+
+            this_hi.score = hi_gene[3]
+            this_hi.origin = "HI Gene"
+            hi_gene_objs[geneID] = this_hi
+        return hi_gene_objs
+
+    @staticmethod
+    def find_symbol_in_results(symbol, results):
+        if symbol in results["final"]:
+            return [results["final"][symbol]["ensembl"]["gene"]]
+        if symbol in results["multi"]:
+            return [gene["gene"] for gene in results["multi"][symbol]["ensembl"]]
+        if symbol in results["bad"] or results["none"]:
+            return None
+
+    @staticmethod
+    def symbol_lookup_multi(mygene_instance, gene_symbols):
+        results = mygene_instance.querymany(gene_symbols, scopes="symbol",
+                                            species="human", fields="ensembl.gene")
+        results_final = {}
+        results_bad = {}
+        results_none = {}
+        results_multi = {}
+        for result in results:
+            query = result["query"]
+            if "notfound" in result and result["notfound"]:
+                results_none[query] = result
+                continue
+            if "ensembl" not in result:
+                results_bad[query] = result
+                continue
+            if isinstance(result["ensembl"], list):
+                results_multi[query] = result
+                continue
+            if query not in results_final:
+                results_final[query] = result
+                continue
+            if result["_score"] > results_final[query]["_score"]:
+                results_final[query] = result
+        results = {"final": results_final, "multi": results_multi,
+                   "none": results_none, "bad": results_bad}
+        return results
+
+    # @staticmethod
+    # def read_gnomad_pli_data(file):
+    #     with open(file) as infile:
+    #         reader = csv.DictReader(infile, delimiter="\t")
+    #         data = [row for row in reader]
+    #         # header = infile.readline()
+    #         # data = infile.readlines()
+    #     # header = header.rstrip("\n").split("\t")
+    #     # data = [line.rstrip("\n").split("\t") for line in data]
+    #     data = {x["gene"]: x for x in data}
+    #     return data
+
+    # @staticmethod
+    # def symbol_lookup(mygene_instance, gene_symbol):
+    #     results = mygene_instance.query(gene_symbol, fields="ensembl.gene", species="human")
+    #     if len(results["hits"]) > 1:
+    #         print(f"Warning: Multiple hits for {gene_symbol}")
+    #         return None
+    #     if len(results["hits"]) == 0:
+    #         print(f"Warning: No results found for {gene_symbol}")
+    #     return results["hits"][0]["ensembl"]["gene"]
+
+
+# %% Comparisons
 # TODO: Add a method to add a patient.
 class ComparisonTable:
     """Data object holding all patient vs. patient comparisons."""
@@ -184,7 +473,7 @@ class ComparisonTable:
         loci_compare = cls.compare_loci(patient_1, patient_2)
         gene_compare = cls.compare_genes(patient_1, patient_2)
         hpo_compare = cls.compare_hpos(patient_1, patient_2)
-        comparison = PatientIntersect2(
+        comparison = PatientIntersect(
             patient_1, patient_2,
             length_compare, loci_compare, gene_compare, hpo_compare
             )
@@ -690,6 +979,56 @@ class ComparisonTable:
         writer.close()
 
 
+class PatientIntersect:
+    """Record of similarity between two patients."""
+
+    # pylint: disable=too-many-instance-attributes
+
+    def __init__(self, patient_1, patient_2,
+                 length_compare, loci_compare,
+                 gene_compare, hpo_compare):
+        self.patients = [patient_1, patient_2]
+
+        self.length_similarity = length_compare
+
+        self.loci_similarity = loci_compare[0]
+        self.loci_shared_size = loci_compare[1]
+
+        self.gene_similarity = gene_compare[0]
+        self.genes = gene_compare[1]
+        self.gene_count = len(gene_compare[1])
+
+        self.hpo_similarity = hpo_compare[0]
+        self.hpos = hpo_compare[1]
+        self.hpo_count = len(hpo_compare[1])
+
+    def __repr__(self):
+        """Get official string representation."""
+        string = (f"PatientIntersect(patients=[{self.patients[0].id}, {self.patients[1].id}], "
+                  f"length_similarity={self.length_similarity}, "
+                  f"loci_similarity={self.loci_similarity}, "
+                  f"gene_similarity={self.gene_similarity}, "
+                  f"hpo_similarity={self.hpo_similarity})")
+        return string
+
+    def __str__(self):
+        """Get pretty-printing string representation."""
+        string = (f"Similarities of {self.patients[0].id} vs. {self.patients[1].id}:\n"
+                  f"  Genes: {self.gene_similarity}\n"
+                  f"  HPO terms: {self.hpo_similarity}\n"
+                  f"  Length: {self.length_similarity}\n"
+                  f"  Position: {self.loci_similarity}")
+        return string
+
+    def gene_info(self):
+        """Get gene portion of intersect."""
+        return self.genes, self.gene_count, self.gene_similarity
+
+    def hpo_info(self):
+        """Get HPO portion of intersect."""
+        return self.hpos, self.hpo_count, self.hpo_similarity
+
+
 # XXX: This probably doesn't work anymore.
 # def write_comparison_table(table, patients, out, self_match="size"):
 #     """Write comparison table to file. Deprecated."""
@@ -715,7 +1054,7 @@ class ComparisonTable:
 #         outfile.writelines(writer)
 
 
-# %% Data Classes
+# %% Predictions
 
 class TraitPrediction:
     def __init__(self, trait_id, trait_name, population, true, false,
@@ -792,45 +1131,7 @@ SequenceContig = namedtuple("SequenceContig",
                             ["name", "length", "cumulative_start"])
 
 
-class GenomeDict:
-    """GATK-style genome dictionary containing contig names and lengths."""
 
-    def __init__(self, file=None):
-        self.sequences = {}
-        self.index = {}
-        self.total = 0
-
-        if file is not None:
-            self.sequences = self.read_genome_dict(file)
-            self.index = {name: i for i, name in enumerate(self.sequences)}
-            self.total = sum([seq.length for seq in self.sequences.values()])
-
-    @staticmethod
-    def read_genome_dict(file):
-        """Read in GATK genome dictionary file."""
-        with open(file) as infile:
-            lines = infile.readlines()
-        lines = [line for line in lines if line.startswith("@SQ")]
-        for i, line in enumerate(lines):
-            line = line.strip().split("\t")
-            line = [line[1].replace("SN:", "", 1), int(line[2].replace("LN:", "", 1)), 0]
-            if i != 0:
-                line[2] = lines[i - 1][2] + line[1]
-            lines[i] = SequenceContig(*line)
-        lines = {seq.name: seq for seq in lines}
-        return lines
-
-    def abs_pos(self, chromosome, position):
-        """Calculate absolute position from chromosome position.
-
-        Uses genome contig order to establish relative positon within
-        cumulative chromosome lengths.
-        """
-        return self[chromosome].cumulative_start + position
-
-    def __getitem__(self, key):
-        """Retrieve item using key."""
-        return self.sequences[key]
 
 
 # =============================================================================
@@ -871,967 +1172,12 @@ class GenomeDict:
 # =============================================================================
 
 
-class PatientIntersect2:
-    """Record of similarity between two patients."""
 
-    # pylint: disable=too-many-instance-attributes
 
-    def __init__(self, patient_1, patient_2,
-                 length_compare, loci_compare,
-                 gene_compare, hpo_compare):
-        self.patients = [patient_1, patient_2]
 
-        self.length_similarity = length_compare
 
-        self.loci_similarity = loci_compare[0]
-        self.loci_shared_size = loci_compare[1]
 
-        self.gene_similarity = gene_compare[0]
-        self.genes = gene_compare[1]
-        self.gene_count = len(gene_compare[1])
 
-        self.hpo_similarity = hpo_compare[0]
-        self.hpos = hpo_compare[1]
-        self.hpo_count = len(hpo_compare[1])
-
-    def __repr__(self):
-        """Get official string representation."""
-        string = (f"PatientIntersect(patients=[{self.patients[0].id}, {self.patients[1].id}], "
-                  f"length_similarity={self.length_similarity}, "
-                  f"loci_similarity={self.loci_similarity}, "
-                  f"gene_similarity={self.gene_similarity}, "
-                  f"hpo_similarity={self.hpo_similarity})")
-        return string
-
-    def __str__(self):
-        """Get pretty-printing string representation."""
-        string = (f"Similarities of {self.patients[0].id} vs. {self.patients[1].id}:\n"
-                  f"  Genes: {self.gene_similarity}\n"
-                  f"  HPO terms: {self.hpo_similarity}\n"
-                  f"  Length: {self.length_similarity}\n"
-                  f"  Position: {self.loci_similarity}")
-        return string
-
-    def gene_info(self):
-        """Get gene portion of intersect."""
-        return self.genes, self.gene_count, self.gene_similarity
-
-    def hpo_info(self):
-        """Get HPO portion of intersect."""
-        return self.hpos, self.hpo_count, self.hpo_similarity
-
-
-class DataManager:
-    """Collection of Chromosome 6 Project data handling methods."""
-
-    def __init__(self):
-        pass
-
-    @classmethod
-    def read_data(cls, data_file):
-        """Import general CSV data."""
-        data = []
-        with open(data_file, encoding="utf-8") as infile:
-            reader = csv.DictReader(infile, delimiter=",", quotechar='"')
-            for row in reader:
-                for k, v in row.items():
-                    if not v:
-                        row[k] = None
-                    else:
-                        row[k] = v.replace("\n", " ")
-                        row[k] = row[k].replace("\t", "")
-                data.append(row)
-        data = cls.coerce_booleans(data)
-        return data
-
-    @staticmethod
-    def write_table(data, filename):
-        """Write CSV data."""
-        writer = ["\t".join(data[0].keys()) + "\n"]
-        for entry in data:
-            writer.append("\t".join([str(value) for value in entry.values()])
-                          + "\n")
-        with open(filename, "w") as outfile:
-            outfile.writelines(writer)
-
-    @staticmethod
-    def coerce_booleans(data):
-        """Replace True/False and Yes/No strings with bools."""
-        coerced = data
-        for entry in coerced:
-            for k, v in entry.items():
-                if not v:
-                    continue
-                if v.lower() in ["true", "yes"]:
-                    entry[k] = True
-                elif v.lower() in ["false", "no"]:
-                    entry[k] = False
-        return coerced
-
-    @staticmethod
-    def fix_hg19_positions(data):
-        """Fill missing position data, if available, and convert to int."""
-        fixed = data
-        start_report = "Start position in report"
-        start_convert = "Start positie in Hg19"
-        stop_report = "Stop position in report"
-        stop_convert = "Stop positie in Hg19"
-
-        for entry in fixed:
-            build = entry["Human genome build version"]
-            for reported, converted in [(start_report, start_convert),
-                                        (stop_report, stop_convert)]:
-                reported_value = entry[reported]
-                converted_value = entry[converted]
-
-                # Try to fill missing if an hg19 position was already reported.
-                if not converted_value:
-                    # If both positions are missing, skip this record.
-                    if not reported_value:
-                        continue
-                    # If not build hg19, skip this record.
-                    if build != "hg19/NCBI37":
-                        continue
-                    entry[converted] = reported_value
-
-                # Clean up value and convert to integer.
-                try:
-                    new_int = entry[converted].replace(" ", "")
-                    new_int = new_int.replace(",", "")
-                    new_int = int(new_int)
-                    entry[converted] = new_int
-                except ValueError as err:
-                    print(f"Could not parse {err}")
-        return fixed
-
-    @staticmethod
-    def trim_chromosome_names(data):
-        """Remove 'chr' from contig names."""
-        trimmed = data
-        for entry in trimmed:
-            if not entry["Chromosome"]:
-                continue
-            if entry["Chromosome"].lower().startswith("chr"):
-                entry["Chromosome"] = entry["Chromosome"].strip("chrCHR")
-        return trimmed
-
-    @staticmethod
-    def fix_patient_hpos(data):
-        """Change Molgenis-styled HPO terms to OBO HPO terms."""
-        # old_keys = list(data[0].keys())
-        new_data = {}
-        # new_data = {patient["label"]: patient for patient in data}
-        for patient in data:
-            new_patient = dict(patient)
-            for key in patient:
-                new_patient[key.replace("_", ":")] = new_patient.pop(key)
-            new_data[new_patient["label"]] = new_patient
-        return new_data
-
-    @staticmethod
-    def fix_patient_hpos2(data):
-        """Change Molgenis-styled HPO terms to OBO HPO terms."""
-        new_data = {entry["label"]: {x.replace("_", ":"): y for x, y in list(entry.items())[1:]}
-                    for entry in data}
-        return new_data
-
-    @classmethod
-    def fix_genotype_data(cls, data):
-        """Apply all data fixes."""
-        fixed = cls.trim_chromosome_names(data)
-        fixed = cls.fix_hg19_positions(fixed)
-        return fixed
-
-    @staticmethod
-    def make_patients(genotypes, phenotypes, geneset=None, hpos=None,
-                      ontology=None, expand_hpos=True):
-        """Construct Patient objects from data."""
-        subjects = ({record["subject"] for record in genotypes}
-                    | {record["owner"] for record in phenotypes})
-        patients = {subject: Patient(subject) for subject in subjects}
-        for genotype in genotypes:
-            patients[genotype["subject"]].genotypes.append(genotype)
-        for phenotype in phenotypes:
-            patients[phenotype["owner"]].phenotypes.append(phenotype)
-        if geneset:
-            for patient in patients.values():
-                patient.cnvs = patient.extract_cnvs()
-                patient.identify_gene_overlaps(geneset)
-        if ontology and hpos:
-            for patient in patients.values():
-                if patient.id not in hpos:
-                    continue
-                patient.hpo = {ontology[hpo_id]: response
-                               for hpo_id, response in hpos[patient.id].items()}
-                # patient_hpos = []
-                # for hpo_id, value in hpos[patient.id].items():
-                #     if hpo_id == "label":
-                #         continue
-                #     if value == "T":
-                #         patient_hpos.append(ontology[hpo_id])
-                # patient.hpo = patient_hpos
-                if expand_hpos:
-                    patient.expand_hpo_terms(ontology)
-        for patient in patients.values():
-            if patient.genotypes:
-                patient.origin = patient.genotypes[0]["origin info"]
-            patient.convert_birthday_to_datetime()
-        return patients
-
-    @staticmethod
-    def print_summary_counts(patients):
-        """Print a summary of genotype and phenotype counts."""
-        size = len(patients.values())
-        sums = [(len(patient.genotypes), len(patient.phenotypes))
-                for patient in patients.values()]
-        print(f"Patients: {size}")
-        print("---------------------")
-        print(f"{'Genotypes':13}{'Phenotypes':14}Counts")
-        for geno, pheno in sorted(list(set(sums)), key=lambda x: f"{x[0]}_{x[1]}"):
-            print(f"{geno:<13}{pheno:<14}{sums.count((geno,pheno)):3}")
-
-    @staticmethod
-    def make_UCSC_browser_tracks(patients, out, filter_chrom=None):
-        """Write UCSC BED file of patient CNVs."""
-        writer = ["browser hide all position chr6\n"]
-        patient_list = sorted(
-            [patient for patient in patients.values() if patient.cnvs],
-            key=lambda x: x.cnvs[0].range.start
-            )
-        for i, patient in enumerate(patient_list):
-            patient_writer = [f"track name=Patient_{i} visibility=2\n"
-                              f"#chrom\tchromStart\tchromEnd\tname\n"]
-            for cnv in patient.cnvs:
-                patient_writer.append(
-                    f"chr{cnv.chromosome}\t{cnv.range.start}\t"
-                    f"{cnv.range.stop - 1}\t{str(cnv.change).replace(' ', '')}\n")
-            writer += patient_writer
-        with open(out, "w") as outfile:
-            outfile.writelines(writer)
-
-    @staticmethod
-    def read_HI_genes(file):
-        """Read HI gene information file."""
-        with open(file) as infile:
-            infile.readline()
-            data = infile.readlines()
-        data = [x.lstrip("chr").rstrip("\n").split("\t") for x in data]
-        data = {x[3].split("|")[0]: [x[0], int(x[1]), int(x[2]),
-                                     float(x[3].split("|")[-1].rstrip("%"))]
-                for x in data}
-        return data
-
-# !!!
-    @classmethod
-    def make_HI_objects(cls, hi_genes, geneset, gene_lookup):
-        """Construct HI_Gene objects from HI gene info."""
-        hi_gene_objs = {}
-        for geneID, hi_gene in hi_genes.items():
-            this_hi = HI_Gene(geneID)
-            this_hi.genotypes.append(dict(zip(
-                ["Chromosome", "Start positie in Hg19", "Stop positie in Hg19", "imbalance"],
-                hi_gene[:3] + ["HI Gene"]
-                )))
-            this_hi.cnvs = this_hi.extract_cnvs()
-            this_hi.identify_gene_overlaps(geneset)
-
-            symbol_results = cls.find_symbol_in_results(geneID, gene_lookup)
-            if symbol_results is not None:
-                refine = [gene for gene in this_hi.cnvs[0].genes
-                          if gene.gene_id in symbol_results]
-                if not refine:
-                    print(f"Warning: No refined matches for {geneID}.")
-                else:
-                    this_hi.cnvs[0].genes = refine
-                    this_hi.refined = True
-
-            this_hi.score = hi_gene[3]
-            this_hi.origin = "HI Gene"
-            hi_gene_objs[geneID] = this_hi
-        return hi_gene_objs
-
-    @staticmethod
-    def find_symbol_in_results(symbol, results):
-        if symbol in results["final"]:
-            return [results["final"][symbol]["ensembl"]["gene"]]
-        if symbol in results["multi"]:
-            return [gene["gene"] for gene in results["multi"][symbol]["ensembl"]]
-        if symbol in results["bad"] or results["none"]:
-            return None
-
-    @staticmethod
-    def symbol_lookup_multi(mygene_instance, gene_symbols):
-        results = mygene_instance.querymany(gene_symbols, scopes="symbol",
-                                            species="human", fields="ensembl.gene")
-        results_final = {}
-        results_bad = {}
-        results_none = {}
-        results_multi = {}
-        for result in results:
-            query = result["query"]
-            if "notfound" in result and result["notfound"]:
-                results_none[query] = result
-                continue
-            if "ensembl" not in result:
-                results_bad[query] = result
-                continue
-            if isinstance(result["ensembl"], list):
-                results_multi[query] = result
-                continue
-            if query not in results_final:
-                results_final[query] = result
-                continue
-            if result["_score"] > results_final[query]["_score"]:
-                results_final[query] = result
-        results = {"final": results_final, "multi": results_multi,
-                   "none": results_none, "bad": results_bad}
-        return results
-
-    # @staticmethod
-    # def read_gnomad_pli_data(file):
-    #     with open(file) as infile:
-    #         reader = csv.DictReader(infile, delimiter="\t")
-    #         data = [row for row in reader]
-    #         # header = infile.readline()
-    #         # data = infile.readlines()
-    #     # header = header.rstrip("\n").split("\t")
-    #     # data = [line.rstrip("\n").split("\t") for line in data]
-    #     data = {x["gene"]: x for x in data}
-    #     return data
-
-    # @staticmethod
-    # def symbol_lookup(mygene_instance, gene_symbol):
-    #     results = mygene_instance.query(gene_symbol, fields="ensembl.gene", species="human")
-    #     if len(results["hits"]) > 1:
-    #         print(f"Warning: Multiple hits for {gene_symbol}")
-    #         return None
-    #     if len(results["hits"]) == 0:
-    #         print(f"Warning: No results found for {gene_symbol}")
-    #     return results["hits"][0]["ensembl"]["gene"]
-
-
-class Cytoband:
-    """Cytogenetic banding object."""
-
-    def __init__(self, chromosome, start, stop, band, stain):
-        self.chr = chromosome
-        self.locus = range(start, stop)
-        self.band = band
-        self.stain = stain
-
-    def __str__(self):
-        """Make custom pretty string representation."""
-        string = ("Cytoband("
-                  f"locus='{self.chr}:{self.locus.start}-{self.locus.stop - 1}', "
-                  f"band='{self.band}', "
-                  f"stain='{self.stain}')")
-        return string
-
-    def __repr__(self):
-        """Make custom technical string representation."""
-        string = f"Cytoband({self.chr}:{min(self.locus)}-{max(self.locus)})"
-        return string
-
-
-class Cytomap:
-    """Cytogenetic banding map of a genome."""
-
-    def __init__(self, file="C:/Users/Ty/Documents/cytoBand.txt"):
-        self.path = file
-        self.cytobands = self.make_cytobands(self.path)
-
-    @classmethod
-    def make_cytobands(cls, filepath):
-        """Set up cytogenetic map from data file."""
-        cytobands = cls.read_cytoband_file(filepath)
-        cytobands = cls.split_cytobands_by_chr(cytobands)
-        return cytobands
-
-    @staticmethod
-    def read_cytoband_file(file):
-        """Read cytogenetic banding from file."""
-        with open(file) as infile:
-            cytobands = infile.readlines()
-        cytobands = [line.strip().split("\t") for line in cytobands]
-        cytobands = [Cytoband(line[0].strip("chr"), int(line[1]), int(line[2]), line[3], line[4])
-                     for line in cytobands]
-        return cytobands
-
-    @staticmethod
-    def split_cytobands_by_chr(cytobands):
-        """Organize cytogenetic bands by chromosome."""
-        cytomap = {chrom: [] for chrom in {cytoband.chr for cytoband in cytobands}}
-        for cytoband in cytobands:
-            cytomap[cytoband.chr].append(cytoband)
-        return cytomap
-
-    @staticmethod
-    def split_cytomap_by_arm(cytomap):
-        """Split cytogenetic bands by chromosome arm."""
-        arm_map = {key: {"p": [], "q": []} for key in cytomap.keys()}
-        for chrom_list in cytomap.values():
-            for cytoband in chrom_list:
-                arm_map[cytoband.chr][cytoband.band[0]].append(cytoband)
-        return arm_map
-
-    def get_band(self, chromosome, coordinate):
-        """Get corresponding cytogenetic band at a genomic locus."""
-        for band in self.cytobands[chromosome]:
-            if coordinate in band.locus:
-                return band
-        return None
-
-    def get_bands(self, chromosome, range_: range):
-        """Get corresponding cytogenetic bands in a genomic locus range."""
-        bands = []
-        for band in self.cytobands[chromosome]:
-            if overlap(range_, band.locus):
-                bands.append(band)
-        return bands
-
-
-class CNV:
-    """Data object containing CNV information."""
-
-    def __init__(self, chromosome, start, stop, change, ID=None, genes=None):
-        self.id = ID
-        self.chromosome = str(chromosome)
-        self.range = range(start, stop + 1)
-        self.change = change
-        self.length = len(self.range)
-        self.genes = genes
-
-    def __repr__(self):
-        """Make string representation of object."""
-        string = (
-            f"CNV({self.change}: "
-            f"{self.chromosome}:{self.range.start}-{self.range.stop})"
-            )
-        return string
-
-    def __str__(self):
-        """Make pretty string of object."""
-        string = ("CNV:\n"
-                  f"  Change = {self.change}\n"
-                  f"  Locus = {self.chromosome}:"
-                  f"{self.range.start}-{self.range.stop}\n"
-                  f"  Length = {self.length:,} bp")
-        return string
-
-
-# TODO: Add a method to add a patient.
-class PatientDatabase:
-    """Database containing all Patient objects."""
-
-    def __init__(self, patients):
-        self.patients = patients
-        self.index = self.make_index()
-        self.cnvs = self.organize_cnvs()
-        self.size = len(self.patients)
-
-    def __getitem__(self, key):
-        """Get patient by patient ID."""
-        return self.patients[key]
-
-    def __iter__(self):
-        """Initialize iterable."""
-        self.__iteri__ = 0
-        return self
-
-    def __next__(self):
-        """Iterate iterable."""
-        if self.__iteri__ == self.size:
-            raise StopIteration
-        result = self.patients[self.index[self.__iteri__]]
-        self.__iteri__ += 1
-        return result
-
-    def make_index(self):
-        """Make database index for iteration purposes."""
-        index = dict(enumerate(self.patients))
-        return index
-
-    def organize_cnvs(self):
-        """Get and organize CNVs from all patients."""
-        cnvs = sorted(
-            [cnv for patient in self.patients.values() for cnv in patient.cnvs if is_patient(patient)],
-            key=lambda x: x.range.start
-            )
-        cnv_dict = {chromosome: [] for chromosome in {cnv.chromosome for cnv in cnvs}}
-        for cnv in cnvs:
-            cnv_dict[cnv.chromosome].append(cnv)
-        return cnv_dict
-
-    def add_predictions(self, predictions):
-        for patient in self:
-            patient.predictions = predictions[patient.id]
-
-    def summary(self):
-        """Calculate summary counts."""
-        len_cnv = len([cnv for chromosome in self.cnvs.values() for cnv in chromosome])
-        summary_txt = (f"Patients: {len(self.patients)}\n"
-                       f"CNVs: {len_cnv}")
-        return summary_txt
-
-    def make_phenotype_table(self):
-        """Tabulate phenotype info for all patients."""
-        all_hpos = sorted(list({hpo.id for patient in self for hpo in patient.hpo}))
-        all_hpos = {name: pos for pos, name in enumerate(all_hpos)}
-        hpo_count = len(all_hpos)
-
-        header = ["patient"] + list(all_hpos.keys())
-        rows = {}
-
-        for patient in self:
-            if is_gene(patient):
-                continue
-            row = [0] * hpo_count
-            for hpo in patient.hpo:
-                row[all_hpos[hpo.id]] = 1
-            row.insert(0, patient.id)
-            row = dict(zip(header, row))
-            rows[row["patient"]] = row
-        return rows
-
-    def make_gene_table(self):
-        """Tabulate gene info for all patients."""
-        all_genes = sorted(list({gene.gene_id for patient in self for gene in patient.all_genes()}))
-        all_genes = {name: pos for pos, name in enumerate(all_genes)}
-        gene_count = len(all_genes)
-
-        header = ["patient"] + list(all_genes.keys())
-        rows = {}
-
-        for patient in self:
-            if is_gene(patient):
-                continue
-
-            row = [0] * gene_count
-            for gene in patient.all_genes():
-                row[all_genes[gene.gene_id]] = 1
-            row.insert(0, patient.id)
-
-            row = dict(zip(header, row))
-            rows[row["patient"]] = row
-        return rows
-
-    def make_genotypes_table(self, absolute_pos=True, genome_dict=None):
-        """Tabulate CNV information for all single-CNV patients."""
-        if absolute_pos and genome_dict is None:
-            raise ValueError("Asbolute positions require a reference genome dictionary.")
-        header = ["patient", "start", "length"]
-
-        rows = {}
-        for patient in self:
-            if len(patient.cnvs) != 1:
-                continue
-            cnv = patient.cnvs[0]
-            if absolute_pos:
-                row = dict(zip(header, [patient.id, genome_dict.abs_pos(cnv.chromosome, cnv.range.start), cnv.length]))
-            else:
-                row = dict(zip(header, [patient.id, cnv.range.start, cnv.length]))
-            rows[row["patient"]] = row
-        return rows
-
-    def make_combination_table(self, genotypes=True, genes=True,
-                               phenotypes=False, absolute_pos=True,
-                               genome_dict=None):
-        """Tabulate multiple types of patient data."""
-        subtables = []
-        if genotypes:
-            subtables.append(self.make_genotypes_table(absolute_pos,
-                                                       genome_dict))
-        if genes:
-            subtables.append(self.make_gene_table())
-        if phenotypes:
-            subtables.append(self.make_phenotype_table())
-
-        names = set(subtables[0].keys())
-        names.intersection_update(*[
-            set(subtable.keys()) for subtable in subtables
-            ])
-
-        rows = {}
-        for name in names:
-            row = {}
-            for subtable in subtables:
-                row.update(subtable[name])
-            rows[name] = row
-        return rows
-
-    @staticmethod
-    def write_table(table, out):
-        """Write CSV file of tabulated data."""
-        table_values = list(table.values())
-        with open(out, "w", newline="") as outfile:
-            writer = csv.DictWriter(outfile, table_values[0].keys())
-            writer.writeheader()
-            writer.writerows(table_values)
-
-
-class Patient:
-    """Chromosome 6 Project patient data."""
-
-    def __init__(self, ID):
-        self.id = ID
-        self.genotypes = []
-        self.phenotypes = []
-        self.cnvs = []
-        # self.affected_genes = {}
-        # self.affected_gene_ids = {}
-        self.hpo = {}
-        self.predictions = {}
-
-        self.origin = None
-        self.birthdate = None
-        self.age = None
-
-    def __eq__(self, other):
-        if not isinstance(other, self.__class__):
-            return False
-        return self.id == other.id
-
-    def __repr__(self):
-        """Construct string representation."""
-        return (f"ID: {self.id}\n"
-                f"  Genotypes: {len(self.genotypes)}\n"
-                f"  Phenotypes: {len(self.phenotypes)}")
-
-    def extract_cnvs(self):
-        """Pull CNV data from genotype information."""
-        cnvs = []
-        for genotype in self.genotypes:
-            chrom = genotype["Chromosome"]
-            start = genotype["Start positie in Hg19"]
-            stop = genotype["Stop positie in Hg19"]
-            change = genotype["imbalance"]
-
-            if chrom not in REFERENCE_CHR or not start or not stop:
-                continue
-            cnvs.append(CNV(chrom, start, stop, change, self.id))
-        cnvs = sorted(cnvs, key=lambda x: REFERENCE_CHR.index(x.chromosome))
-        return cnvs
-
-    def get_affected_ranges(self):
-        """Get CNV ranges from all CNVs."""
-        ranges = {cnv.chromosome: [] for cnv in self.cnvs}
-        for cnv in self.cnvs:
-            ranges[cnv.chromosome].append(cnv.range)
-        ranges = {chromosome: merge_range_list(cnv_ranges)
-                  for chromosome, cnv_ranges in ranges.items()}
-        return ranges
-
-    def identify_gene_overlaps(self, gene_set):
-        """Set genes affected per CNV."""
-        for cnv in self.cnvs:
-            cnv.genes = gene_set.get_locus(cnv.chromosome, cnv.range.start,
-                                           cnv.range.stop)
-
-    def all_genes(self):
-        """Get all genes affected by all CNVs."""
-        all_genes = {gene for cnv in self.cnvs for gene in cnv.genes}
-        return all_genes
-
-    def get_true_hpos(self):
-        trues = {term for term, response in self.hpo.items()
-                 if response == "T"}
-        return trues
-
-    def expand_hpo_terms(self, hpo_ontology):
-        expanded = {parent for term, response in self.hpo.items()
-                    for parent in term.superclasses()
-                    if response == "T"}
-        for hpo in expanded:
-            self.hpo[hpo] = "T"
-
-    def convert_birthday_to_datetime(self):
-        if not self.phenotypes:
-            return
-        if not self.phenotypes[0]["birthdate"]:
-            return
-        self.birthdate = datetime.strptime(
-            self.phenotypes[0]["birthdate"],
-            "%Y-%m-%d")
-        years = datetime.today().year - self.birthdate.year
-        if (datetime.today().month <= self.birthdate.year
-                and datetime.today().day < self.birthdate.day):
-            years -= 1
-        self.age = years
-        return
-
-
-class HI_Gene(Patient):
-    """Patient subclass for gene objects."""
-
-    def __init__(self, ID):
-        super().__init__(ID)
-        self.score = None
-        self.refined = False
-
-
-# %% Graph Stuff
-
-Node = namedtuple("Node", ["id", "label", "group", "color",
-                           "value", "title", "HI", "ranges"])
-Edge = namedtuple("Edge", ["edge_id", "id1", "id2", "width",
-                           "color", "title", "sim"])
-
-
-def build_network_nodes(comparison_table, patients_only=False):
-    """Build patient node objects from comparison table."""
-    colors = {"Literature case report": "blue",
-              "Parental uploaded array report": "pink",
-              None: "black",
-              "HI Gene": "yellow"}
-
-    nodes = {}
-    for patient in comparison_table.index:
-        if (not is_patient(comparison_table.patient_db[patient])
-            and patients_only):
-            continue
-        lookup = comparison_table.lookup(patient)
-        group = comparison_table.patient_db[patient].origin
-        ranges = []
-        for cnv in comparison_table.patient_db[patient].cnvs:
-            ranges.append(f"{cnv.chromosome}:"
-                          f"{cnv.range.start}:"
-                          f"{cnv.range.stop}")
-        ranges = ";".join(ranges)
-        color = colors[group]
-        if group == "HI Gene":
-            hi = comparison_table.patient_db[patient].score
-            value = 2
-            title = (f"<p>{patient}<br>"
-                     f"Group: {group}<br>"
-                     f"HI score: {hi}<br>"
-                     f"Genes: {value}<br></p>")
-        else:
-            hi = 0
-            for intersect in comparison_table.lookup(patient, "all"):
-                if intersect.patients[1].id == patient:
-                    patient2 = intersect.patients[1]
-                else:
-                    patient2 = intersect.patients[0]
-                # patient2 = comparison_table.patient_db[intersect.patients[1]]
-                if (is_gene(patient2)
-                        and intersect.gene_count > 0
-                        and patient2.score <= 2):
-                    hi += 1
-            value = lookup.gene_count
-            title = (f"<p>{patient}<br>"
-                     f"Group: {group}<br>"
-                     f"Affected genes: {value}<br>"
-                     f"HPO terms: {lookup.hpo_count}</p>")
-        node = Node(patient, patient, group, color, value, title, hi, ranges)
-        nodes[patient] = node
-    return nodes
-
-
-def write_network_nodes(nodes, out, normalize=True):
-    """Write patient nodes to CSV file."""
-    writer = ["id,label,group,color,value,title,hi,ranges\n"]
-    for node in sorted(list(nodes.values()), key=lambda x: x[0]):
-        if normalize:
-            node = list(node)
-            node[4] = log(node[4] + 1, 2)
-        writer.append(",".join([str(x) for x in node]) + "\n")
-    with open(out, "w") as outfile:
-        outfile.writelines(writer)
-
-
-def build_network_edges(comparison_table, patients_only=False):
-    """Build patient-patient edge objects from comparison table."""
-    edges = []
-    for intersect in comparison_table:
-        if not are_patients(intersect.patients) and patients_only:
-            continue
-        if not intersect.gene_count or intersect.patients[0] == intersect.patients[1]:
-            continue
-        id1 = intersect.patients[0].id
-        id2 = intersect.patients[1].id
-        edge_id = f"{id1}_{id2}"
-        gene_count = intersect.gene_count
-        gene_sim = intersect.gene_similarity
-        hpo_count = intersect.hpo_count
-        hpo_sim = intersect.hpo_similarity
-
-        color = "gray"
-        title = (f"<p>{id1}---{id2}:<br>"
-                 f"Shared genes: {gene_count} ({gene_sim:.2%})<br>"
-                 f"Shared HPO terms: {hpo_count} ({hpo_sim:.2%})<br></p>")
-        edges.append(Edge(edge_id, id1, id2, gene_count,
-                          color, title, gene_sim))
-    return edges
-
-
-def write_network_edges(edges, out, normalize=True):
-    """Write patient-patient edges to CSV file."""
-    writer = ["id,from,to,width,color,title,gene_sim\n"]
-    for edge in edges:
-        if normalize:
-            edge = list(edge)
-            edge[3] = log(edge[3], 2)
-        writer.append(",".join([str(x) for x in edge]) + "\n")
-    with open(out, "w") as outfile:
-        outfile.writelines(writer)
-
-
-def write_network_files(comparison_table, out_dir=None, patients_only=False,
-                        normalize=True):
-    if out_dir is None:
-        out_dir = ("/home/tyler/Documents/Chr6_docs/Network/"
-                   + datetime.today().strftime("%Y_%m_%d"))
-    if not os.path.isdir(out_dir):
-        os.makedirs(out_dir)
-
-    node_path = f"{out_dir}/nodes_"
-    edge_path = f"{out_dir}/edges_"
-    file_no = 1
-    while os.path.isfile(f"{node_path}{file_no}.csv"):
-        file_no += 1
-    node_path = f"{node_path}{file_no}.csv"
-    edge_path = f"{edge_path}{file_no}.csv"
-
-    nodes = build_network_nodes(comparison_table, patients_only)
-    edges = build_network_edges(comparison_table, patients_only)
-    write_network_nodes(nodes, node_path, normalize)
-    write_network_edges(edges, edge_path, normalize)
-    return nodes, edges
-
-
-# XXX: Probably deprecated.
-def make_array(table):
-    """Make array from comparisons."""
-    array = []
-    for pid in table:
-        values = []
-        for p2 in table:
-            if pid == p2:
-                values.append(1)
-            elif p2 in table[pid]:
-                values.append(table[pid][p2])
-            else:
-                values.append(table[p2][pid])
-        array.append(values)
-    array = np.array(array)
-    return array
-
-
-# XXX: Probably deprecated.
-def gene_comparison_heatmap(table):
-    """Plot heatmap of gene comparisons."""
-    data_array = make_array(table)
-
-    fig, ax = plt.subplots()
-    ax.imshow(data_array)
-
-    # We want to show all ticks...
-    ax.set_xticks(np.arange(len(table)))
-    ax.set_yticks(np.arange(len(table)))
-    # ... and label them with the respective list entries
-    ax.set_xticklabels(list(table.keys()))
-    ax.set_yticklabels(list(table.keys()))
-
-    # Rotate the tick labels and set their alignment.
-    plt.setp(ax.get_xticklabels(), rotation=45, ha="right",
-             rotation_mode="anchor")
-
-    # Loop over data dimensions and create text annotations.
-    # for i in range(len(vegetables)):
-    #     for j in range(len(farmers)):
-    #         text = ax.text(j, i, harvest[i, j],
-    #                        ha="center", va="center", color="w")
-
-    ax.set_title("Test Heat Map")
-    fig.tight_layout()
-    plt.show()
-
-
-# def similarity_vs_hpo_scatter(patient_comparison):
-#     points = []
-#     for intersect in patient_comparison:
-#         p1 = patient_comparison.patient_db[intersect.patients[0]]
-#         p2 = patient_comparison.patient_db[intersect.patients[1]]
-#         if is_gene(p1) or is_gene(p2) or p1.id == p2.id:
-#             continue
-#         points.append((intersect.gene_similarity, intersect.hpo_count))
-#     points = list(zip(*points))
-#     plt.scatter(*points)
-#     plt.ylabel("Shared HPO terms", fontsize=24)
-#     plt.xlabel("Shared genes (percent similarity)", fontsize=24)
-#     plt.yticks(fontsize=20)
-#     plt.xticks(fontsize=20)
-
-
-def plot_individual_factors(comparison_table, percentage=True):
-    """Plot scatterplots for similarity vs. shared HPO terms."""
-    plotters = [intersect for intersect in comparison_table
-                if is_patient(intersect.patients[0])
-                and is_patient(intersect.patients[1])
-                and intersect.patients[0] != intersect.patients[1]
-                and intersect.patients[0].hpo and intersect.patients[1].hpo
-                and intersect.patients[0].cnvs and intersect.patients[1].cnvs]
-
-    # if percentage:
-    #     hpos = [x.hpo_similarity for x in plotters]
-    # else:
-    #     hpos = [x.hpo_count for x in plotters]
-
-    fig, (ax1, ax2, ax3) = plt.subplots(1, 3)
-
-    ax1.scatter(*list(zip(*[(x.length_similarity, x.hpo_similarity) for x in plotters if x.length_similarity > 0])))
-    ax2.scatter(*list(zip(*[(x.loci_similarity, x.hpo_similarity) for x in plotters if x.loci_similarity > 0])))
-    ax3.scatter(*list(zip(*[(x.gene_similarity, x.hpo_similarity) for x in plotters if x.gene_similarity > 0])))
-
-    # ax4.scatter(*list(zip(*[(x.length_similarity, x.hpo_count) for x in plotters if x.length_similarity > 0])))
-    # ax5.scatter(*list(zip(*[(x.loci_similarity, x.hpo_count) for x in plotters if x.loci_similarity > 0])))
-    # ax6.scatter(*list(zip(*[(x.gene_similarity, x.hpo_count) for x in plotters if x.gene_similarity > 0])))
-
-    # ax1.scatter([x.length_similarity for x in plotters], hpos)
-    # ax2.scatter([x.loci_similarity for x in plotters if x.loci_similarity > 0], hpos)
-    # ax3.scatter([x.gene_similarity for x in plotters if x.gene_similarity > 0], hpos)
-
-    fig.suptitle("CNV Similarity vs. Shared HPO Terms", fontsize=30)
-    y_label = "HPO term Jaccard similarity"
-
-    ax1.set_ylabel(y_label, fontsize=24)
-
-    ax1.set_xlabel("Length Similarity", fontsize=24)
-    ax2.set_xlabel("Loci Similarity", fontsize=24)
-    ax3.set_xlabel("Gene Similarity", fontsize=24)
-
-
-def make_cnv_histogram_info(patient_db, chromosome, genome_dict):
-    """Gather data on CNVs per megabase for a histogram."""
-    cnvs = patient_db.cnvs[chromosome]
-
-    bin_starts = range(1, genome_dict["6"].length, 1000000)
-    bin_counts = {range(bin_start, bin_start + 1000000): 0
-                  for bin_start in bin_starts[:-1]}
-    bin_counts[range(bin_starts[-1], genome_dict["6"].length + 1)] = 0
-
-    for cnv in cnvs:
-        for bin_range in bin_counts:
-            if overlap(cnv.range, bin_range):
-                bin_counts[bin_range] += 1
-    return bin_counts
-
-
-def plot_cnv_histogram(hist_info):
-    """Plot histogram of CNV coverage per megabase."""
-    bins = [(x.start - 1)/1000000 for x in hist_info]
-    heights = list(hist_info.values())
-
-    # plt.bar(y_pos, performance, align='center', alpha=0.5)
-    plt.bar(bins, heights, align="center", alpha=0.5, color="seagreen")
-    plt.xticks(fontsize=30, fontname="Tahoma")
-    plt.yticks(fontsize=30, fontname="Tahoma")
-    plt.xlabel("Megabase", fontsize=36, fontname="Tahoma")
-    plt.ylabel("Count", fontsize=36, fontname="Tahoma")
-    plt.title("CNV coverage per chromosome 6 megabase",
-              fontsize=36, fontname="Tahoma")
-
-    plt.show()
 
 
 # %% Main

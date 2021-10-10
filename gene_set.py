@@ -6,7 +6,6 @@ Created on Mon Apr 26 15:19:06 2021
 @author: T.D. Medina
 """
 
-# %% Imports
 import gzip
 from chr6 import overlap, REFERENCE_CHR
 
