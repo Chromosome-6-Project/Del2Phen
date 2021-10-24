@@ -79,15 +79,15 @@ shinyServer(function(input, output, session) {
   })
 
   # __Jaccard Gene Slider ----
-  output$sim_filter <- renderUI({
+  output$gene_sim_filter <- renderUI({
     if (!is_data_loaded()) {
       return(NULL)
     }
     df <- edgedata()
     max_val <- ceiling(max(df$gene_sim) * 100)
     sliderInput(
-      inputId = "sim_slider",
-      label = "Similarity Score Filter:",
+      inputId = "gene_sim_slider",
+      label = "Gene Similarity Filter:",
       min = 0,
       max = 100,
       value = c(0, 100),
@@ -96,6 +96,24 @@ shinyServer(function(input, output, session) {
     )
   })
 
+  # __Jaccard HI Gene Slider ----
+  output$hi_gene_sim_filter <- renderUI({
+    if (!is_data_loaded()) {
+      return(NULL)
+    }
+    df <- edgedata()
+    max_val <- ceiling(max(df$hi_gene_sim) * 100)
+    sliderInput(
+      inputId = "hi_gene_sim_slider",
+      label = "HI Gene Similarity Filter:",
+      min = 0,
+      max = 100,
+      value = c(0, 100),
+      round = TRUE,
+      ticks = TRUE,
+    )
+  })  
+  
   # __HI Score Slider ----
   output$hi_filter <- renderUI({
     if (!is_data_loaded()) {
@@ -238,7 +256,8 @@ shinyServer(function(input, output, session) {
   observeEvent(input$update, {
 
     # Get slider values.
-    gene_sim <- input$sim_slider
+    gene_sim <- input$gene_sim_slider
+    hi_gene_sim <- input$hi_gene_sim_slider
     gene_hi <- input$hi_slider
     
     # Get other values.
@@ -249,7 +268,10 @@ shinyServer(function(input, output, session) {
     edges <- edgedata()
 
     # List components to remove.
-    remove_edges <- edges$id[(edges$gene_sim * 100) < gene_sim[1] | gene_sim[2] < (edges$gene_sim * 100)]
+    remove_edges <- edges$id[(edges$gene_sim * 100) < gene_sim[1]
+                             | gene_sim[2] < (edges$gene_sim * 100)
+                             | (edges$hi_gene_sim * 100) < hi_gene_sim[1]
+                             | hi_gene_sim[2] < (edges$hi_gene_sim * 100)]
     gene_nodes <- nodes[nodes$group == "HI Gene",]
     remove_nodes <- gene_nodes$id[(gene_nodes$hi) < gene_hi[1] | gene_hi[2] < (gene_nodes$hi)]
     # if (remove_dominant) {
