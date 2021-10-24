@@ -14,10 +14,9 @@ import _pickle as cPickle
 import numpy as np
 import pandas as pd
 from pronto import Ontology, Term
-import mygene
 
 from data_objects import (
-    Patient, HI_Gene, PatientDatabase, GenomeDict,
+    Patient, PatientDatabase, GenomeDict,
     is_gene, is_patient, are_patients,
     )
 
@@ -140,8 +139,11 @@ class DataManager:
     @staticmethod
     def fix_patient_hpos2(data):
         """Change Molgenis-styled HPO terms to OBO HPO terms."""
-        new_data = {entry["label"]: {x.replace("_", ":"): y for x, y in list(entry.items())[1:]}
-                    for entry in data}
+        new_data = {
+            entry["label"]: {x.replace("_", ":"): y
+                             for x, y in list(entry.items())[1:]}
+            for entry in data
+            }
         return new_data
 
     @classmethod
@@ -218,83 +220,86 @@ class DataManager:
         with open(out, "w") as outfile:
             outfile.writelines(writer)
 
-    @staticmethod
-    def read_HI_genes(file):
-        """Read HI gene information file."""
-        with open(file) as infile:
-            infile.readline()
-            data = infile.readlines()
-        data = [x.lstrip("chr").rstrip("\n").split("\t") for x in data]
-        data = {x[3].split("|")[0]: [x[0], int(x[1]), int(x[2]),
-                                     float(x[3].split("|")[-1].rstrip("%"))]
-                for x in data}
-        return data
+# =============================================================================
+#     @staticmethod
+#     def read_HI_genes(file):
+#         """Read HI gene information file."""
+#         with open(file) as infile:
+#             infile.readline()
+#             data = infile.readlines()
+#         data = [x.lstrip("chr").rstrip("\n").split("\t") for x in data]
+#         data = {x[3].split("|")[0]: [x[0], int(x[1]), int(x[2]),
+#                                      float(x[3].split("|")[-1].rstrip("%"))]
+#                 for x in data}
+#         return data
+# =============================================================================
 
-# !!!
-    @classmethod
-    def make_HI_objects(cls, hi_genes, geneset, gene_lookup):
-        """Construct HI_Gene objects from HI gene info."""
-        hi_gene_objs = {}
-        for geneID, hi_gene in hi_genes.items():
-            this_hi = HI_Gene(geneID)
-            this_hi.genotypes.append(dict(zip(
-                ["Chromosome", "Start positie in Hg19", "Stop positie in Hg19", "imbalance"],
-                hi_gene[:3] + ["HI Gene"]
-                )))
-            this_hi.cnvs = this_hi.extract_cnvs()
-            this_hi.identify_gene_overlaps(geneset)
-
-            symbol_results = cls.find_symbol_in_results(geneID, gene_lookup)
-            if symbol_results is not None:
-                refine = [gene for gene in this_hi.cnvs[0].genes
-                          if gene.gene_id in symbol_results]
-                if not refine:
-                    print(f"Warning: No refined matches for {geneID}.")
-                else:
-                    this_hi.cnvs[0].genes = refine
-                    this_hi.refined = True
-
-            this_hi.score = hi_gene[3]
-            this_hi.origin = "HI Gene"
-            hi_gene_objs[geneID] = this_hi
-        return hi_gene_objs
-
-    @staticmethod
-    def find_symbol_in_results(symbol, results):
-        if symbol in results["final"]:
-            return [results["final"][symbol]["ensembl"]["gene"]]
-        if symbol in results["multi"]:
-            return [gene["gene"] for gene in results["multi"][symbol]["ensembl"]]
-        if symbol in results["bad"] or results["none"]:
-            return None
-
-    @staticmethod
-    def symbol_lookup_multi(mygene_instance, gene_symbols):
-        results = mygene_instance.querymany(gene_symbols, scopes="symbol",
-                                            species="human", fields="ensembl.gene")
-        results_final = {}
-        results_bad = {}
-        results_none = {}
-        results_multi = {}
-        for result in results:
-            query = result["query"]
-            if "notfound" in result and result["notfound"]:
-                results_none[query] = result
-                continue
-            if "ensembl" not in result:
-                results_bad[query] = result
-                continue
-            if isinstance(result["ensembl"], list):
-                results_multi[query] = result
-                continue
-            if query not in results_final:
-                results_final[query] = result
-                continue
-            if result["_score"] > results_final[query]["_score"]:
-                results_final[query] = result
-        results = {"final": results_final, "multi": results_multi,
-                   "none": results_none, "bad": results_bad}
-        return results
+# =============================================================================
+#     @classmethod
+#     def make_HI_objects(cls, hi_genes, geneset, gene_lookup):
+#         """Construct HI_Gene objects from HI gene info."""
+#         hi_gene_objs = {}
+#         for geneID, hi_gene in hi_genes.items():
+#             this_hi = HI_Gene(geneID)
+#             this_hi.genotypes.append(dict(zip(
+#                 ["Chromosome", "Start positie in Hg19", "Stop positie in Hg19", "imbalance"],
+#                 hi_gene[:3] + ["HI Gene"]
+#                 )))
+#             this_hi.cnvs = this_hi.extract_cnvs()
+#             this_hi.identify_gene_overlaps(geneset)
+#
+#             symbol_results = cls.find_symbol_in_results(geneID, gene_lookup)
+#             if symbol_results is not None:
+#                 refine = [gene for gene in this_hi.cnvs[0].genes
+#                           if gene.gene_id in symbol_results]
+#                 if not refine:
+#                     print(f"Warning: No refined matches for {geneID}.")
+#                 else:
+#                     this_hi.cnvs[0].genes = refine
+#                     this_hi.refined = True
+#
+#             this_hi.score = hi_gene[3]
+#             this_hi.origin = "HI Gene"
+#             hi_gene_objs[geneID] = this_hi
+#         return hi_gene_objs
+#
+#     @staticmethod
+#     def find_symbol_in_results(symbol, results):
+#         if symbol in results["final"]:
+#             return [results["final"][symbol]["ensembl"]["gene"]]
+#         if symbol in results["multi"]:
+#             return [gene["gene"] for gene in results["multi"][symbol]["ensembl"]]
+#         if symbol in results["bad"] or results["none"]:
+#             return None
+#
+#     @staticmethod
+#     def symbol_lookup_multi(mygene_instance, gene_symbols):
+#         results = mygene_instance.querymany(gene_symbols, scopes="symbol",
+#                                             species="human", fields="ensembl.gene")
+#         results_final = {}
+#         results_bad = {}
+#         results_none = {}
+#         results_multi = {}
+#         for result in results:
+#             query = result["query"]
+#             if "notfound" in result and result["notfound"]:
+#                 results_none[query] = result
+#                 continue
+#             if "ensembl" not in result:
+#                 results_bad[query] = result
+#                 continue
+#             if isinstance(result["ensembl"], list):
+#                 results_multi[query] = result
+#                 continue
+#             if query not in results_final:
+#                 results_final[query] = result
+#                 continue
+#             if result["_score"] > results_final[query]["_score"]:
+#                 results_final[query] = result
+#         results = {"final": results_final, "multi": results_multi,
+#                    "none": results_none, "bad": results_bad}
+#         return results
+# =============================================================================
 
     # @staticmethod
     # def read_gnomad_pli_data(file):
@@ -317,6 +322,28 @@ class DataManager:
     #     if len(results["hits"]) == 0:
     #         print(f"Warning: No results found for {gene_symbol}")
     #     return results["hits"][0]["ensembl"]["gene"]
+
+# =============================================================================
+# HI_Gene = namedtuple("HI_Gene", ["chr", "locus", "HI_score"])
+#
+# class HI_Manager:
+#     def __init__(self, HI_file=None, threshold=10):
+#         self.hi_genes = []
+#         if HI_file is not None:
+#             self.read_HI_genes(HI_file, threshold)
+#
+#     @staticmethod
+#     def read_HI_genes(file):
+#         """Read HI gene information file."""
+#         with open(file) as infile:
+#             infile.readline()
+#             data = infile.readlines()
+#         data = [x.lstrip("chr").rstrip("\n").split("\t") for x in data]
+#         data = {x[3].split("|")[0]: [x[0], int(x[1]), int(x[2]),
+#                                      float(x[3].split("|")[-1].rstrip("%"))]
+#                 for x in data}
+#         return data
+# =============================================================================
 
 
 # %% Comparisons
@@ -362,19 +389,6 @@ class ComparisonTable:
             self.__iterj__ = self.__iteri__
         return result
 
-    @classmethod
-    def compare_all(cls, patient_1, patient_2):
-        """Compare all metrics between two patients."""
-        length_compare = cls.compare_length(patient_1, patient_2)
-        loci_compare = cls.compare_loci(patient_1, patient_2)
-        gene_compare = cls.compare_genes(patient_1, patient_2)
-        hpo_compare = cls.compare_hpos(patient_1, patient_2)
-        comparison = PatientIntersect(
-            patient_1, patient_2,
-            length_compare, loci_compare, gene_compare, hpo_compare
-            )
-        return comparison
-
     def compare_patients(self):
         """Compare all patients to each other."""
         ids = list(self.patient_db.patients.keys())
@@ -390,6 +404,20 @@ class ComparisonTable:
                 patient_comparison[id_j] = self.compare_all(patient_i, patient_j)
             comparisons[id_i] = patient_comparison
         return comparisons
+
+    @classmethod
+    def compare_all(cls, patient_1, patient_2):
+        """Compare all metrics between two patients."""
+        length_compare = cls.compare_length(patient_1, patient_2)
+        loci_compare = cls.compare_loci(patient_1, patient_2)
+        gene_compare = cls.compare_genes(patient_1, patient_2)
+        hi_compare = cls.compare_HI_genes(patient_1, patient_2)
+        hpo_compare = cls.compare_hpos(patient_1, patient_2)
+        comparison = PatientIntersect(
+            patient_1, patient_2,
+            length_compare, loci_compare, gene_compare, hi_compare, hpo_compare
+            )
+        return comparison
 
     @staticmethod
     def compare_length(patient_1, patient_2):
@@ -432,15 +460,24 @@ class ComparisonTable:
         return jaccard_index, intersect
 
     @staticmethod
+    def compare_HI_genes(patient_1, patient_2,
+                         pLI_threshold=0.1, HI_threshold=10):
+        """Compare affected HI genes between two patients."""
+        jaccard_index, intersect = jaccard(
+            patient_1.all_HI_genes(pLI_threshold, HI_threshold),
+            patient_2.all_HI_genes(pLI_threshold, HI_threshold)
+            )
+        if (is_gene(patient_1) or is_gene(patient_2)) and jaccard_index > 0:
+            jaccard_index = 1.0
+        return jaccard_index, intersect
+
+    @staticmethod
     def compare_hpos(patient_1, patient_2):
         """Compare HPO terms between two patients."""
         hpo_set1 = {hpo for hpo, response in patient_1.hpo.items() if response == "T"}
         hpo_set2 = {hpo for hpo, response in patient_2.hpo.items() if response == "T"}
         jaccard_index, intersect = jaccard(hpo_set1, hpo_set2)
         return jaccard_index, intersect
-
-    # @staticmethod
-    # def compare_hpos_modified(patient_1, patient_2):
 
     def make_array(self):
         """Convert raw comparison dictionary to numpy array."""
@@ -882,7 +919,8 @@ class PatientIntersect:
 
     def __init__(self, patient_1, patient_2,
                  length_compare, loci_compare,
-                 gene_compare, hpo_compare):
+                 gene_compare, hi_gene_compare,
+                 hpo_compare):
         self.patients = [patient_1, patient_2]
 
         self.length_similarity = length_compare
@@ -893,6 +931,10 @@ class PatientIntersect:
         self.gene_similarity = gene_compare[0]
         self.genes = gene_compare[1]
         self.gene_count = len(gene_compare[1])
+
+        self.hi_gene_similarity = hi_gene_compare[0]
+        self.hi_genes = hi_gene_compare[1]
+        self.hi_gene_count = len(hi_gene_compare[1])
 
         self.hpo_similarity = hpo_compare[0]
         self.hpos = hpo_compare[1]
@@ -1084,13 +1126,17 @@ def test(genotypes="/home/tyler/Documents/Chr6_docs/genotypes.csv",
     # Build GeneSet from source GTF file (gzipped) (slow, large file):
     # geneset = GeneSet("C:/Users/Ty/Documents/Chr6/hg19.ensGene.gtf.gz")
 
+    # Build chr6 GeneSet only from source GTF file (gzipped) (slow, large file)
+    # and add pLI and HI info automatically from default sources:
+    geneset = gene_set.main()
+
     # Or, load pre-made GeneSet from pickle (faster, large file):
     # with open("GeneSets/hg19.ensGene.pkl", "rb") as infile:
     #     geneset = pickle.load(infile)
 
     # Or, load pre-made GeneSet from bz2 pickle (less fast, small file):
-    with bz2.BZ2File("GeneSets/hg19.ensGene.pkl.bz2", "rb") as infile:
-        geneset = cPickle.load(infile)
+    # with bz2.BZ2File("GeneSets/hg19.ensGene.pkl.bz2", "rb") as infile:
+    #     geneset = cPickle.load(infile)
 
     # Read HPO ontology.
     print("Loading Human Phenotype Ontology...")
@@ -1112,19 +1158,24 @@ def test(genotypes="/home/tyler/Documents/Chr6_docs/genotypes.csv",
     hpos = DataManager.fix_patient_hpos2(hpos)
 
     # Make HI Gene objects.
-    print("Reading HI gene information...")
-    mg = mygene.MyGeneInfo()
-    hi_genes = DataManager.read_HI_genes("Data/HI_Predictions.v3.chr6.bed")
-    symbol_lookup = DataManager.symbol_lookup_multi(mg, list(hi_genes.keys()))
-    hi_genes = DataManager.make_HI_objects(hi_genes, geneset, symbol_lookup)
-    hi_genes = {x: y for x, y in hi_genes.items() if y.refined}
+# =============================================================================
+#     print("Reading HI gene information...")
+#     mg = mygene.MyGeneInfo()
+#     hi_genes = DataManager.read_HI_genes("Data/HI_Predictions.v3.chr6.bed")
+#     symbol_lookup = DataManager.symbol_lookup_multi(mg, list(hi_genes.keys()))
+#     hi_genes = DataManager.make_HI_objects(hi_genes, geneset, symbol_lookup)
+#     hi_genes = {x: y for x, y in hi_genes.items() if y.refined}
+#
+#     # !!!: This removes any HI genes with scores > 10.
+#     hi_genes = {x: y for x, y in hi_genes.items() if y.score <= 10}
+# =============================================================================
 
     # Build patient objects.
     # !!!: This is where you can choose whether or not to expand HPO terms.
     print("Building patient objects...")
     patients = DataManager.make_patients(genotypes, phenotypes, geneset,
                                          hpos, ontology, expand_hpos=False)
-    patients.update(hi_genes)
+    # patients.update(hi_genes)
     patients = PatientDatabase(patients)
     # patients = PatientDatabase({patient.id: patient for patient in list(patients.values())[:10]})
     # DataManager.print_summary_counts(patients)
@@ -1138,7 +1189,7 @@ def test(genotypes="/home/tyler/Documents/Chr6_docs/genotypes.csv",
         comparison,
         geneset,
         ontology,
-        hi_genes,
+        # hi_genes,
         genomedict
         )
 
@@ -1156,4 +1207,4 @@ if __name__ == "__main__":
     # import sys
     # main(sys.argv[1], sys.argv[2])
     # genotypes, phenotypes, patients, geneset = test()
-    _, _, my_patients, my_comparison, my_geneset, my_ontology, _, my_genomedict = test()
+    _, _, my_patients, my_comparison, my_geneset, my_ontology, my_genomedict = test()

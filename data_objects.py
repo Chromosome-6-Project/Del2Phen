@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""The Chromosome 6 Project - Data Objects.
+"""The Chromosome 6 Project - Data objects.
 
 @author: T.D. Medina
 """
@@ -14,7 +14,7 @@ from utilities import (
     overlap,
     REFERENCE_CHR,
     )
-
+from gene_set import is_haploinsufficient
 
 SequenceContig = namedtuple("SequenceContig",
                             ["name", "length", "cumulative_start"])
@@ -383,6 +383,12 @@ class Patient:
         all_genes = {gene for cnv in self.cnvs for gene in cnv.genes}
         return all_genes
 
+    def all_HI_genes(self, pLI_threshold=0.1, HI_threshold=10,):
+        """Get all haploinsufficient genes affected by all CNVs."""
+        hi_genes = {gene for cnv in self.cnvs for gene in cnv.genes
+                    if is_haploinsufficient(gene, pLI_threshold, HI_threshold)}
+        return hi_genes
+
     def get_true_hpos(self):
         trues = {term for term, response in self.hpo.items()
                  if response == "T"}
@@ -411,6 +417,7 @@ class Patient:
         return
 
 
+# TODO: Kill this horrible thing by adding HI/pLI info to GeneSet.
 class HI_Gene(Patient):
     """Patient subclass for gene objects."""
 

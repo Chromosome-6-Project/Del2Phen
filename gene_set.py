@@ -6,6 +6,11 @@
 """
 
 import gzip
+from collections import namedtuple
+
+import mygene
+import pandas as pd
+
 from utilities import overlap, REFERENCE_CHR
 
 
@@ -57,6 +62,11 @@ class GeneAnnotation:
 
 
 class Transcript(GeneAnnotation):
+    """Gene sub-annotation of a single transcript.
+
+    Designed to be nested inside of a parent-level gene annotation.
+    """
+
     def __init__(self, gene_id, gene_name, transcript_id,
                  seqname, start, end, strand,
                  score=".", source=".", annotations=None, **kwargs):
@@ -75,6 +85,11 @@ class Transcript(GeneAnnotation):
 
 
 class Exon(GeneAnnotation):
+    """Gene sub-annotation of a single exon of a transcript.
+
+    Designed to be nested inside of a transcript annotation.
+    """
+
     def __init__(self, gene_id, gene_name, transcript_id, exon_id, exon_number,
                  seqname, start, end, strand,
                  score=".", source=".", **kwargs):
@@ -85,6 +100,11 @@ class Exon(GeneAnnotation):
 
 
 class UTR3(GeneAnnotation):
+    """Gene sub-annotation of a transcript's UTR-3 region.
+
+    Designed to be nested inside of a transcript annotation.
+    """
+
     def __init__(self, gene_id, gene_name, transcript_id, exon_id, exon_number,
                  seqname, start, end, strand,
                  score=".", source=".", **kwargs):
@@ -95,6 +115,11 @@ class UTR3(GeneAnnotation):
 
 
 class UTR5(GeneAnnotation):
+    """Gene sub-annotation of a transcript's UTR-5 region.
+
+    Designed to be nested inside of a transcript annotation.
+    """
+
     def __init__(self, gene_id, gene_name, transcript_id, exon_id, exon_number,
                  seqname, start, end, strand,
                  score=".", source=".", **kwargs):
@@ -105,6 +130,11 @@ class UTR5(GeneAnnotation):
 
 
 class StartCodon(GeneAnnotation):
+    """Gene sub-annotation of a transcript's start codon.
+
+    Designed to be nested inside of a transcript annotation.
+    """
+
     def __init__(self, gene_id, gene_name, transcript_id, exon_id, exon_number,
                  seqname, start, end, strand, frame,
                  score=".", source=".", **kwargs):
@@ -115,6 +145,11 @@ class StartCodon(GeneAnnotation):
 
 
 class StopCodon(GeneAnnotation):
+    """Gene sub-annotation of a transcript's stop codon.
+
+    Designed to be nested inside of a transcript annotation.
+    """
+
     def __init__(self, gene_id, gene_name, transcript_id, exon_id, exon_number,
                  seqname, start, end, strand, frame,
                  score=".", source=".", **kwargs):
@@ -125,6 +160,11 @@ class StopCodon(GeneAnnotation):
 
 
 class CodingSequence(GeneAnnotation):
+    """Gene sub-annotation of a transcript coding sequence.
+
+    Designed to be nested inside of a transcript annotation.
+    """
+
     def __init__(self, gene_id, gene_name, transcript_id, exon_id, exon_number,
                  seqname, start, end, strand, frame,
                  score=".", source=".", **kwargs):
@@ -143,6 +183,7 @@ class Gene:
                  transcripts=None):
         self.gene_id = gene_id
         self.gene_name = gene_name
+        self.gene_symbol = None
         self.source = source
 
         self.seqname = seqname
@@ -155,6 +196,9 @@ class Gene:
 
         if self.transcripts is not None:
             self._set_attrs_from_transcripts()
+
+        self.hi_score = None
+        self.pli_score = None
 
         self._hash = self._make_hash()
 
@@ -186,6 +230,12 @@ class Gene:
         return hash(string)
 
 
+# TODO: Add HI and pLI scores to the genes by:
+# 1) DONE - Make lists-of-genes into dicts-of-genes using gene_id's as keys
+# 2) DONE - Read in HI and pLI data
+# 3) DONE - Use mygene to identify Ensembl ID's and assign scores to genes
+# Then, identify CNV overlaps per-patient (see other TODOs)
+# Then, compare affected HI genes (see other TODOs)
 class GeneSet:
     """Database of gene annotations."""
 
@@ -196,12 +246,15 @@ class GeneSet:
         if self.path:
             self.genes = self.make_gene_set(path)
 
+        self.size = sum([len(chrom) for chrom in self.genes.values()])
+
     def make_gene_set(self, path):
-        flat_annotes = self.read_annotations(path)
-        annote_objects = self.make_annotation_objects(flat_annotes)
-        genes = self.make_genes(annote_objects)
-        organized_genes = self.organize_genes_by_seqname(genes)
-        return organized_genes
+        """Construct Genes and GeneSet objects from data file."""
+        genes = self.read_annotations(path)
+        genes = self.make_annotation_objects(genes)
+        genes = self.make_genes(genes)
+        genes = self.organize_genes(genes)
+        return genes
 
     @staticmethod
     def read_annotations(file):
@@ -232,6 +285,7 @@ class GeneSet:
 
     @staticmethod
     def make_annotation_objects(data):
+        """Construct gene sub-annotation objects."""
         fields = ["seqname", "source", "feature", "start", "end",
                   "score", "strand", "frame"]
         classes = {"transcript": Transcript, "exon": Exon,
@@ -248,7 +302,9 @@ class GeneSet:
 
     @staticmethod
     def make_genes(data):
-        transcripts = {entry for entry in data if isinstance(entry, Transcript)}
+        """Make Gene objects from sub-annotations."""
+        transcripts = {entry for entry in data
+                       if isinstance(entry, Transcript)}
         data = data - transcripts
         transcripts = {trans.transcript_id: trans for trans in transcripts}
 
@@ -271,10 +327,11 @@ class GeneSet:
         return genes
 
     @staticmethod
-    def organize_genes_by_seqname(genes):
-        chrom_dict = {gene.seqname: [] for gene in genes}
+    def organize_genes(genes):
+        """Group genes by chromosome in a chromosome dictionary."""
+        chrom_dict = {gene.seqname: {} for gene in genes}
         for gene in genes:
-            chrom_dict[gene.seqname].append(gene)
+            chrom_dict[gene.seqname][gene.gene_id] = gene
         return chrom_dict
 
     def get_locus(self, seqname, start, stop=None):
@@ -285,17 +342,199 @@ class GeneSet:
             stop = start
         query = range(start, stop + 1)
         results = []
-        for gene in self.genes[seqname]:
+        for gene in self.genes[seqname].values():
             if overlap(query, range(gene.start, gene.end+1)):
                 results.append(gene)
         return results
 
+    def add_pLI_scores(self, pLI_info):
+        """Add pLI scores to genes from gnomad data."""
+        for gene, info in pLI_info.items():
+            if gene in self.genes[str(info.chromosome)]:
+                self.genes[str(info.chromosome)][gene].pli_score = info.pLI
 
-# def main():
-#     """Load geneset."""
-#     geneset = GeneSet("C:/Users/tyler/Documents/Chr6/hg19.ensGene.gtf.gz")
-#     return geneset
+    def add_HI_scores(self, HI_info):
+        """Add HI scores to genes."""
+        for gene, info in HI_info.items():
+            if gene in self.genes[info.chromosome]:
+                self.genes[info.chromosome][gene].hi_score = info.HI_score
+
+    def get_all_gene_ids(self):
+        """Get gene IDs from all genes."""
+        return {gene.gene_id for chrom in self.genes.values()
+                for gene in chrom.values()}
 
 
-# if __name__ == "__main__":
-#     geneset = main()
+# %% Haploinsufficients
+pLI_info = namedtuple("pLI_info", [
+    "gene", "transcript", "obs_mis", "exp_mis", "oe_mis", "mu_mis",
+    "possible_mis", "obs_mis_pphen", "exp_mis_pphen", "oe_mis_pphen",
+    "possible_mis_pphen", "obs_syn", "exp_syn", "oe_syn", "mu_syn",
+    "possible_syn", "obs_lof", "mu_lof", "possible_lof", "exp_lof",
+    "pLI", "pNull", "pRec", "oe_lof", "oe_syn_lower", "oe_syn_upper",
+    "oe_mis_lower", "oe_mis_upper", "oe_lof_lower", "oe_lof_upper",
+    "constraint_flag", "syn_z", "mis_z", "lof_z", "oe_lof_upper_rank",
+    "oe_lof_upper_bin", "oe_lof_upper_bin_6", "n_sites", "classic_caf",
+    "max_af", "no_lofs", "obs_het_lof", "obs_hom_lof", "defined", "p",
+    "exp_hom_lof", "classic_caf_afr", "classic_caf_amr", "classic_caf_asj",
+    "classic_caf_eas", "classic_caf_fin", "classic_caf_nfe",
+    "classic_caf_oth", "classic_caf_sas", "p_afr", "p_amr", "p_asj", "p_eas",
+    "p_fin", "p_nfe", "p_oth", "p_sas", "transcript_type", "gene_id",
+    "transcript_level", "cds_length", "num_coding_exons", "gene_type",
+    "gene_length", "exac_pLI", "exac_obs_lof", "exac_exp_lof",
+    "exac_oe_lof", "brain_expression", "chromosome",
+    "start_position", "end_position"
+    ])
+
+HI_info = namedtuple("HI_info", ["gene_symbol", "chromosome", "start",
+                                 "stop", "HI_score"])
+
+
+def read_gnomad_pli_data(file, pLI_max=1):
+    data = pd.read_csv(file, sep="\t")
+    data_objs = {}
+    for i, row in data.iterrows():
+        pli_obj = pLI_info(*row)
+        if pli_obj.pLI > pLI_max:
+            continue
+        data_objs[pli_obj.gene_id] = pli_obj
+
+    return data_objs
+
+
+def read_HI_gene_data(file, HI_max=100):
+    """Read HI gene information file."""
+    with open(file) as infile:
+        infile.readline()
+        data = infile.readlines()
+    data = [x.lstrip("chr").rstrip("\n").split("\t") for x in data]
+    data = [[x[3].split("|")[0], x[0], int(x[1]), int(x[2]),
+            float(x[3].split("|")[-1].rstrip("%"))]
+            for x in data]
+    data = {x[0]: HI_info(*x) for x in data}
+    data = {x: y for x, y in data.items() if y.HI_score < HI_max}
+    return data
+
+
+def lookup_gene_symbols(symbol_list):
+    mg = mygene.MyGeneInfo()
+    results = mg.querymany(symbol_list, scopes="symbol",
+                           species="human", fields="ensembl.gene")
+    results_final = {}
+    results_bad = {}
+    results_none = {}
+    results_multi = {}
+    for result in results:
+        query = result["query"]
+        if "notfound" in result and result["notfound"]:
+            results_none[query] = result
+            continue
+        if "ensembl" not in result:
+            results_bad[query] = result
+            continue
+        if isinstance(result["ensembl"], list):
+            results_multi[query] = result
+            continue
+        if query not in results_final:
+            results_final[query] = result
+            continue
+        if result["_score"] > results_final[query]["_score"]:
+            results_final[query] = result
+    results = {"final": results_final, "multi": results_multi,
+               "none": results_none, "bad": results_bad}
+    return results
+
+
+def replace_HI_gene_ids(hi_genes, mygene_lookup):
+    new_hi_genes = {}
+    for gene_symbol, gene in hi_genes.items():
+        results = find_symbol_in_results(gene_symbol, mygene_lookup)
+        if results is None:
+            continue
+        for result in results:
+            new_hi_genes[result] = gene
+    return new_hi_genes
+
+
+def make_hi_genes(file):
+    data = read_HI_gene_data(file)
+    lookup = lookup_gene_symbols(data.keys())
+    data = replace_HI_gene_ids(data, lookup)
+    return data
+
+
+# %% MyGene
+def find_symbol_in_results(symbol, results):
+    if symbol in results["final"]:
+        return [results["final"][symbol]["ensembl"]["gene"]]
+    if symbol in results["multi"]:
+        return [gene["gene"] for gene in results["multi"][symbol]["ensembl"]]
+    if symbol in results["bad"] or results["none"]:
+        return None
+
+
+def symbol_lookup_multi(mygene_instance, gene_symbols):
+    results = mygene_instance.querymany(gene_symbols, scopes="symbol",
+                                        species="human", fields="ensembl.gene")
+    results_final = {}
+    results_bad = {}
+    results_none = {}
+    results_multi = {}
+    for result in results:
+        query = result["query"]
+        if "notfound" in result and result["notfound"]:
+            results_none[query] = result
+            continue
+        if "ensembl" not in result:
+            results_bad[query] = result
+            continue
+        if isinstance(result["ensembl"], list):
+            results_multi[query] = result
+            continue
+        if query not in results_final:
+            results_final[query] = result
+            continue
+        if result["_score"] > results_final[query]["_score"]:
+            results_final[query] = result
+    results = {"final": results_final, "multi": results_multi,
+               "none": results_none, "bad": results_bad}
+    return results
+
+
+# TODO: Finish this to fix missing genes.
+def symbol_relookup_missing(mygene_lookup, mygene_instance):
+    missing = mygene_lookup["none"]
+    results = {}
+    for symbol in missing:
+        result = mygene_instance.query(symbol, scope="symbol",
+                                       species="human", fields="ensembl.gene")
+        # ...
+    return results
+
+
+# %% Helper Functions
+def is_haploinsufficient(gene, pLI_threshold=0.1, HI_threshold=10):
+    """Check if gene has sufficiently low pLI or HI score."""
+    hi_pass = gene.hi_score is not None and gene.hi_score <= HI_threshold
+    pli_pass = gene.pli_score is not None and gene.pli_score <= pLI_threshold
+    return hi_pass or pli_pass
+
+
+# %% Main
+def _read_defaults():
+    pli_genes = read_gnomad_pli_data("Data/gnomad.v2.1.1.lof_metrics.by_gene.6.tsv")
+    hi_genes = make_hi_genes("Data/HI_Predictions.v3.chr6.bed")
+    return pli_genes, hi_genes
+
+
+def main():
+    """Load geneset."""
+    geneset = GeneSet("/home/tyler/Documents/Chr6_docs/GeneSets/hg19.ensGene.chr6.gtf.gz")
+    pli_genes, hi_genes = _read_defaults()
+    geneset.add_pLI_scores(pli_genes)
+    geneset.add_HI_scores(hi_genes)
+    return geneset
+
+
+if __name__ == "__main__":
+    geneset = main()
