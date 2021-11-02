@@ -461,7 +461,7 @@ class ComparisonTable:
 
     @staticmethod
     def compare_HI_genes(patient_1, patient_2,
-                         pLI_threshold=0.1, HI_threshold=10):
+                         pLI_threshold=0.9, HI_threshold=10):
         """Compare affected HI genes between two patients."""
         jaccard_index, intersect = jaccard(
             patient_1.all_HI_genes(pLI_threshold, HI_threshold),
