@@ -15,8 +15,6 @@ import numpy as np
 import plotly.graph_objects as go
 import plotly.io as pio
 
-from data_objects import is_patient, is_gene, are_patients
-
 pio.renderers.default = "browser"
 
 # %% Nodes and Edges
@@ -25,7 +23,7 @@ Node = namedtuple("Node", ["id", "label", "group", "color",
 Edge = namedtuple("Edge", ["edge_id", "id1", "id2", "width", "color", "title",
                            "length_sim", "overlap_sim", "gene_sim", "hi_sim"])
 
-def build_network_nodes(comparison_table, patients_only=False):
+def build_network_nodes(comparison_table):
     """Build patient node objects from comparison table."""
     colors = {"Literature case report": "blue",
               "Parental uploaded array report": "pink",
@@ -34,9 +32,6 @@ def build_network_nodes(comparison_table, patients_only=False):
 
     nodes = {}
     for patient in comparison_table.index:
-        if (not is_patient(comparison_table.patient_db[patient])
-                and patients_only):
-            continue
         lookup = comparison_table.lookup(patient)
         group = comparison_table.patient_db[patient].origin
         ranges = []
@@ -55,16 +50,6 @@ def build_network_nodes(comparison_table, patients_only=False):
                      f"Genes: {value}<br></p>")
         else:
             hi = len(comparison_table.patient_db[patient].all_HI_genes())
-            # for intersect in comparison_table.lookup(patient, "all"):
-            #     if intersect.patients[1].id == patient:
-            #         patient2 = intersect.patients[1]
-            #     else:
-            #         patient2 = intersect.patients[0]
-            #     # patient2 = comparison_table.patient_db[intersect.patients[1]]
-            #     if (is_gene(patient2)
-            #             and intersect.gene_count > 0
-            #             and patient2.score <= 2):
-            #         hi += 1
             value = lookup.gene_count
             title = (f"<p>{patient}<br>"
                      f"Group: {group}<br>"
@@ -88,12 +73,10 @@ def write_network_nodes(nodes, out, normalize=True):
         outfile.writelines(writer)
 
 
-def build_network_edges(comparison_table, patients_only=False):
+def build_network_edges(comparison_table):
     """Build patient-patient edge objects from comparison table."""
     edges = []
     for intersect in comparison_table:
-        if not are_patients(intersect.patients) and patients_only:
-            continue
         if not intersect.gene_count or intersect.patients[0] == intersect.patients[1]:
             continue
 
@@ -138,8 +121,7 @@ def write_network_edges(edges, out, normalize=True):
         outfile.writelines(writer)
 
 
-def write_network_files(comparison_table, out_dir=None, patients_only=False,
-                        normalize=True):
+def write_network_files(comparison_table, out_dir=None, normalize=True):
     if out_dir is None:
         out_dir = ("/home/tyler/Documents/Chr6_docs/Network/"
                    + datetime.today().strftime("%Y_%m_%d"))
@@ -154,8 +136,8 @@ def write_network_files(comparison_table, out_dir=None, patients_only=False,
     node_path = f"{node_path}{file_no}.csv"
     edge_path = f"{edge_path}{file_no}.csv"
 
-    nodes = build_network_nodes(comparison_table, patients_only)
-    edges = build_network_edges(comparison_table, patients_only)
+    nodes = build_network_nodes(comparison_table,)
+    edges = build_network_edges(comparison_table)
     write_network_nodes(nodes, node_path, normalize)
     write_network_edges(edges, edge_path, normalize)
     return nodes, edges
@@ -181,14 +163,14 @@ def make_nx_graph(nodes, edges):
     return graph
 
 
-def filter_graph_edges(graph, overlap_threshold=0, length_threshold=0,
+def filter_graph_edges(graph, length_sim_threshold=0, overlap_sim_threshold=0,
                        gene_sim_threshold=0, hi_gene_sim_threshold=0):
     edges = list(graph.edges.items())
     edges = [(edge[0][0], edge[0][1], edge[1]) for edge in edges
-             if edge[1]["gene_sim"] >= gene_sim_threshold
-             and edge[1]["hi_sim"] >= hi_gene_sim_threshold
-             and edge[1]["length_sim"] >= length_threshold
-             and edge[1]["overlap_sim"] >= overlap_threshold]
+             if edge[1]["length_sim"] >= length_sim_threshold
+             and edge[1]["overlap_sim"] >= overlap_sim_threshold
+             and edge[1]["gene_sim"] >= gene_sim_threshold
+             and edge[1]["hi_sim"] >= hi_gene_sim_threshold]
     filtered_graph = nx.Graph()
     filtered_graph.add_nodes_from(graph.nodes)
     filtered_graph.add_edges_from(edges)
@@ -200,6 +182,28 @@ def get_subnet_sizes(graph):
     sizes = sorted([len(component) for component in components])
     return sizes
 
+def get_subnet_size_counts_over_n(graph, n):
+    sizes = get_subnet_sizes(graph)
+    five_count = sum((1 for size in sizes if size >= n))
+    return five_count
+
+
+def get_subnet_sizes_and_locations(graph, patient_db):
+    subgroups = nx.connected_components(graph)
+    middles = []
+    for subgroup in subgroups:
+        subgroup_genes = {gene for patient in subgroup
+                          for gene in patient_db[patient].all_genes()
+                          if gene.seqname == "6"}
+        if not subgroup_genes:
+            continue
+        center_gene_locus = int(
+            (min([gene.start for gene in subgroup_genes])
+             + max([gene.end for gene in subgroup_genes]))
+            / 2)
+        middles.append([len(subgroup), center_gene_locus])
+    middles.sort(key=lambda x: x[0], reverse=True)
+    return middles
 
 # %% Histograms
 def plot_gene_sim_histograms_with_slider(graph):

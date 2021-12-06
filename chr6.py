@@ -17,7 +17,6 @@ from pronto import Ontology, Term
 
 from data_objects import (
     Patient, PatientDatabase, GenomeDict,
-    is_gene, is_patient, are_patients,
     )
 
 import gene_set
@@ -359,11 +358,13 @@ class ComparisonTable:
         self.raw = self.compare_patients()
         self.index = self.make_index()
         self.array = self.make_array()
-        self.patient_array = self.make_patient_only_array()
         self.size = len(self.index)
 
         self.__iteri__ = 0
         self.__iterj__ = 0
+
+    def __len__(self):
+        return self.size
 
     def read_from_existing(self, comparison_table):
         self.patient_db = comparison_table.patient_db
@@ -455,8 +456,6 @@ class ComparisonTable:
     def compare_genes(patient_1, patient_2):
         """Compare affected genes between two patients."""
         jaccard_index, intersect = jaccard(patient_1.all_genes(), patient_2.all_genes())
-        if (is_gene(patient_1) or is_gene(patient_2)) and jaccard_index > 0:
-            jaccard_index = 1.0
         return jaccard_index, intersect
 
     @staticmethod
@@ -467,8 +466,6 @@ class ComparisonTable:
             patient_1.all_HI_genes(pLI_threshold, HI_threshold),
             patient_2.all_HI_genes(pLI_threshold, HI_threshold)
             )
-        if (is_gene(patient_1) or is_gene(patient_2)) and jaccard_index > 0:
-            jaccard_index = 1.0
         return jaccard_index, intersect
 
     @staticmethod
@@ -507,15 +504,7 @@ class ComparisonTable:
             raise KeyError("ID not found.")
         return self.array[self.index[pid1]][self.index[pid2]]
 
-    def make_patient_only_array(self):
-        patient_comparisons = [y for x in self.array for y in x
-                               if are_patients(y.patients)]
-        dims = int(sqrt(len(patient_comparisons)))
-        array = np.asarray(patient_comparisons, dtype=self.array.dtype)
-        array.shape = [dims, dims]
-        return array
-
-    def write_all_comparisons(self, outfile, patients_only=True):
+    def write_all_comparisons(self, outfile):
         """Write comparison results to TSV file."""
         properties = ["length_similarity",
                       "loci_similarity", "loci_shared_size",
@@ -525,8 +514,6 @@ class ComparisonTable:
         for intersect in self:
             p1, p2 = intersect.patients
             if p1 == p2:
-                continue
-            if (is_gene(p1) or is_gene(p2)) and patients_only:
                 continue
             this_intersect = "\t".join(
                 [f"{intersect.patients[0].id}", f"{intersect.patients[1].id}"]
@@ -550,9 +537,6 @@ class ComparisonTable:
                 patient2 = intersect.patients[0]
             else:
                 patient2 = intersect.patients[1]
-
-            if not (is_patient(patient1) and is_patient(patient2)):
-                continue
 
             if not patient2.hpo:
                 continue
@@ -683,8 +667,6 @@ class ComparisonTable:
         all_predictions = {}
 
         for patient_id in self.index:
-            if not is_patient(self.patient_db[patient_id]):
-                continue
             prediction = self.test_phenotype_prediction(
                 patient_id, freq_threshold, length_similarity, loci_similarity,
                 gene_similarity, hpo_similarity
@@ -1156,19 +1138,6 @@ def test(genotypes="/home/tyler/Documents/Chr6_docs/genotypes.csv",
     print("Reading patient HPO data...")
     hpos = DataManager.read_data(patient_hpo)
     hpos = DataManager.fix_patient_hpos2(hpos)
-
-    # Make HI Gene objects.
-# =============================================================================
-#     print("Reading HI gene information...")
-#     mg = mygene.MyGeneInfo()
-#     hi_genes = DataManager.read_HI_genes("Data/HI_Predictions.v3.chr6.bed")
-#     symbol_lookup = DataManager.symbol_lookup_multi(mg, list(hi_genes.keys()))
-#     hi_genes = DataManager.make_HI_objects(hi_genes, geneset, symbol_lookup)
-#     hi_genes = {x: y for x, y in hi_genes.items() if y.refined}
-#
-#     # !!!: This removes any HI genes with scores > 10.
-#     hi_genes = {x: y for x, y in hi_genes.items() if y.score <= 10}
-# =============================================================================
 
     # Build patient objects.
     # !!!: This is where you can choose whether or not to expand HPO terms.

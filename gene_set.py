@@ -230,12 +230,6 @@ class Gene:
         return hash(string)
 
 
-# TODO: Add HI and pLI scores to the genes by:
-# 1) DONE - Make lists-of-genes into dicts-of-genes using gene_id's as keys
-# 2) DONE - Read in HI and pLI data
-# 3) DONE - Use mygene to identify Ensembl ID's and assign scores to genes
-# Then, identify CNV overlaps per-patient (see other TODOs)
-# Then, compare affected HI genes (see other TODOs)
 class GeneSet:
     """Database of gene annotations."""
 
@@ -247,6 +241,9 @@ class GeneSet:
             self.genes = self.make_gene_set(path)
 
         self.size = sum([len(chrom) for chrom in self.genes.values()])
+
+    def __len__(self):
+        return self.size
 
     def make_gene_set(self, path):
         """Construct Genes and GeneSet objects from data file."""

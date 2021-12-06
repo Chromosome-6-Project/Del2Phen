@@ -2,14 +2,17 @@
 # -*- coding: utf-8 -*-
 """The Chromosome 6 Project - Plotting.
 
-@author: Ty Medina
+@author: T.D. Medina
 """
 
 import matplotlib.pyplot as plt
 import numpy as np
+import plotly.graph_objects as go
+import plotly.io as pio
 
-from utilities import overlap, is_patient
+from utilities import overlap
 
+pio.renderers.default = "browser"
 
 # XXX: Deprecated.
 def make_array(table):
@@ -64,7 +67,7 @@ def gene_comparison_heatmap(table):
 #     for intersect in patient_comparison:
 #         p1 = patient_comparison.patient_db[intersect.patients[0]]
 #         p2 = patient_comparison.patient_db[intersect.patients[1]]
-#         if is_gene(p1) or is_gene(p2) or p1.id == p2.id:
+#         if p1.id == p2.id:
 #             continue
 #         points.append((intersect.gene_similarity, intersect.hpo_count))
 #     points = list(zip(*points))
@@ -78,9 +81,7 @@ def gene_comparison_heatmap(table):
 def plot_individual_factors(comparison_table, percentage=True):
     """Plot scatterplots for similarity vs. shared HPO terms."""
     plotters = [intersect for intersect in comparison_table
-                if is_patient(intersect.patients[0])
-                and is_patient(intersect.patients[1])
-                and intersect.patients[0] != intersect.patients[1]
+                if intersect.patients[0] != intersect.patients[1]
                 and intersect.patients[0].hpo and intersect.patients[1].hpo
                 and intersect.patients[0].cnvs and intersect.patients[1].cnvs]
 
@@ -144,3 +145,16 @@ def plot_cnv_histogram(hist_info):
               fontsize=36, fontname="Tahoma")
 
     plt.show()
+
+
+def test_plot(hist_info, thing):
+    """Plot histogram of CNV coverage per megabase."""
+    bins = [(x.start - 1)/1000000 for x in hist_info]
+    heights = list(hist_info.values())
+
+    fig = go.Figure()
+    fig.add_trace(go.Bar(x=bins, y=heights))
+    fig.add_trace(go.Scatter(x=[x[1]/1e6 for x in thing],
+                             y=[y[0] for y in thing],
+                             mode="markers"))
+    fig.show()

@@ -33,6 +33,9 @@ class GenomeDict:
             self.index = {name: i for i, name in enumerate(self.sequences)}
             self.total = sum([seq.length for seq in self.sequences.values()])
 
+    def __len__(self):
+        return len(self.index)
+
     @staticmethod
     def read_genome_dict(file):
         """Read in GATK genome dictionary file."""
@@ -152,6 +155,9 @@ class CNV:
         self.length = len(self.range)
         self.genes = genes
 
+    def __len__(self):
+        return self.length
+
     def __repr__(self):
         """Make string representation of object."""
         string = (
@@ -180,6 +186,9 @@ class PatientDatabase:
         self.cnvs = self.organize_cnvs()
         self.size = len(self.patients)
 
+    def __len__(self):
+        return self.size
+
     def __getitem__(self, key):
         """Get patient by patient ID."""
         return self.patients[key]
@@ -205,7 +214,7 @@ class PatientDatabase:
     def organize_cnvs(self):
         """Get and organize CNVs from all patients."""
         cnvs = sorted(
-            [cnv for patient in self.patients.values() for cnv in patient.cnvs if is_patient(patient)],
+            [cnv for patient in self.patients.values() for cnv in patient.cnvs],
             key=lambda x: x.range.start
             )
         cnv_dict = {chromosome: [] for chromosome in {cnv.chromosome for cnv in cnvs}}
@@ -234,8 +243,6 @@ class PatientDatabase:
         rows = {}
 
         for patient in self:
-            if is_gene(patient):
-                continue
             row = [0] * hpo_count
             for hpo in patient.hpo:
                 row[all_hpos[hpo.id]] = 1
@@ -254,9 +261,6 @@ class PatientDatabase:
         rows = {}
 
         for patient in self:
-            if is_gene(patient):
-                continue
-
             row = [0] * gene_count
             for gene in patient.all_genes():
                 row[all_genes[gene.gene_id]] = 1
@@ -415,35 +419,3 @@ class Patient:
             years -= 1
         self.age = years
         return
-
-
-# TODO: Kill this horrible thing by adding HI/pLI info to GeneSet.
-class HI_Gene(Patient):
-    """Patient subclass for gene objects."""
-
-    def __init__(self, ID):
-        super().__init__(ID)
-        self.score = None
-        self.refined = False
-
-
-# %% Type Checks
-def is_patient(patient):
-    """Check if object is a Patient object.
-
-    HI_Gene objects will still return False.
-    """
-    if not isinstance(patient, HI_Gene) and isinstance(patient, Patient):
-        return True
-    return False
-
-
-def is_gene(gene):
-    """Check if object is a HI_Gene object."""
-    if isinstance(gene, HI_Gene):
-        return True
-    return False
-
-
-def are_patients(patients):
-    return all((is_patient(patient) for patient in patients))
