@@ -23,6 +23,7 @@ Node = namedtuple("Node", ["id", "label", "group", "color",
 Edge = namedtuple("Edge", ["edge_id", "id1", "id2", "width", "color", "title",
                            "length_sim", "overlap_sim", "gene_sim", "hi_sim"])
 
+
 def build_network_nodes(comparison_table):
     """Build patient node objects from comparison table."""
     colors = {"Literature case report": "blue",
@@ -182,7 +183,8 @@ def get_subnet_sizes(graph):
     sizes = sorted([len(component) for component in components])
     return sizes
 
-def get_subnet_size_counts_over_n(graph, n):
+
+def count_subnets_over_size_n(graph, n):
     sizes = get_subnet_sizes(graph)
     five_count = sum((1 for size in sizes if size >= n))
     return five_count
@@ -205,217 +207,230 @@ def get_subnet_sizes_and_locations(graph, patient_db):
     middles.sort(key=lambda x: x[0], reverse=True)
     return middles
 
+
+def get_node_degrees(graph):
+    counts = dict(graph.degree())
+    return counts
+
+
+def count_nodes_over_n_degree(graph, n):
+    count = get_node_degrees(graph)
+    count = len([1 for node, count in count.items() if count >= n])
+    return count
+
+
 # %% Histograms
-def plot_gene_sim_histograms_with_slider(graph):
-    fig = go.Figure()
-
-    for threshold in np.arange(0, 1.05, .05):
-
-        sizes = get_subnet_sizes(
-            filter_graph_edges(graph, gene_sim_threshold=threshold)
-            )
-
-        fig.add_trace(
-            go.Histogram(
-                x=sizes,
-                visible=False,
-                xbins=dict(
-                    start=0,
-                    end=500,
-                    size=2),
-                autobinx=False,
-                alignmentgroup=0,
-                name="",
-                hovertemplate="Size Range: %{x}<br>Count: %{y}<extra></extra>",
-                )
-            )
-
-    # Make 10th trace visible
-    fig.data[0].visible = True
-
-    # Create and add slider
-    steps = []
-    for i in range(len(fig.data)):
-        step = dict(
-            method="update",
-            args=[{"visible": [False] * len(fig.data)},
-                  {"title": f"Number of groups of size n with gene similarity threshold of {i*.05:.0%}"}],  # layout attribute
-            label=f"{i*.05:.0%}"
-        )
-        step["args"][0]["visible"][i] = True  # Toggle i'th trace to "visible"
-        steps.append(step)
-
-    sliders = [dict(
-        active=0,
-        currentvalue={"prefix": "Threshold: "},
-        pad={"t": 50},
-        steps=steps
-    )]
-
-    fig.update_layout(
-        sliders=sliders,
-        bargap=0.1
-    )
-
-    fig.show()
-
-
-def plot_hi_gene_sim_histograms_with_slider(graph):
-    fig = go.Figure()
-
-    for threshold in np.arange(0, 1.05, .05):
-
-        sizes = get_subnet_sizes(
-            filter_graph_edges(graph, hi_gene_sim_threshold=threshold)
-            )
-
-        fig.add_trace(
-            go.Histogram(
-                x=sizes,
-                visible=False,
-                xbins=dict(
-                    start=0,
-                    end=500,
-                    size=2),
-                autobinx=False,
-                alignmentgroup=0,
-                name="",
-                hovertemplate="Size Range: %{x}<br>Count: %{y}<extra></extra>",
-                )
-            )
-
-    # Make 10th trace visible
-    fig.data[0].visible = True
-
-    # Create and add slider
-    steps = []
-    for i in range(len(fig.data)):
-        step = dict(
-            method="update",
-            args=[{"visible": [False] * len(fig.data)},
-                  {"title": f"Number of groups of size n with HI gene similarity threshold of {i*.05:.0%}"}],  # layout attribute
-            label=f"{i*.05:.0%}"
-        )
-        step["args"][0]["visible"][i] = True  # Toggle i'th trace to "visible"
-        steps.append(step)
-
-    sliders = [dict(
-        active=0,
-        currentvalue={"prefix": "Threshold: "},
-        pad={"t": 50},
-        steps=steps
-    )]
-
-    fig.update_layout(
-        sliders=sliders,
-        bargap=0.1
-    )
-
-    fig.show()
-
-
-def plot_overlap_sim_histograms_with_slider(graph):
-    fig = go.Figure()
-
-    for threshold in np.arange(0, 1.05, .05):
-
-        sizes = get_subnet_sizes(
-            filter_graph_edges(graph, overlap_threshold=threshold)
-            )
-
-        fig.add_trace(
-            go.Histogram(
-                x=sizes,
-                visible=False,
-                xbins=dict(
-                    start=0,
-                    end=500,
-                    size=2),
-                autobinx=False,
-                alignmentgroup=0,
-                name="",
-                hovertemplate="Size Range: %{x}<br>Count: %{y}<extra></extra>",
-                )
-            )
-
-    # Make 10th trace visible
-    fig.data[0].visible = True
-
-    # Create and add slider
-    steps = []
-    for i in range(len(fig.data)):
-        step = dict(
-            method="update",
-            args=[{"visible": [False] * len(fig.data)},
-                  {"title": f"Number of groups of size n with overlap similarity threshold of {i*.05:.0%}"}],  # layout attribute
-            label=f"{i*.05:.0%}"
-        )
-        step["args"][0]["visible"][i] = True  # Toggle i'th trace to "visible"
-        steps.append(step)
-
-    sliders = [dict(
-        active=0,
-        currentvalue={"prefix": "Threshold: "},
-        pad={"t": 50},
-        steps=steps
-    )]
-
-    fig.update_layout(
-        sliders=sliders,
-        bargap=0.1
-    )
-
-    fig.show()
-
-def plot_length_sim_histograms_with_slider(graph):
-    fig = go.Figure()
-
-    for threshold in np.arange(0, 1.05, .05):
-
-        sizes = get_subnet_sizes(
-            filter_graph_edges(graph, length_threshold=threshold)
-            )
-
-        fig.add_trace(
-            go.Histogram(
-                x=sizes,
-                visible=False,
-                xbins=dict(
-                    start=0,
-                    end=500,
-                    size=2),
-                autobinx=False,
-                alignmentgroup=0,
-                name="",
-                hovertemplate="Size Range: %{x}<br>Count: %{y}<extra></extra>",
-                )
-            )
-
-    # Make 10th trace visible
-    fig.data[0].visible = True
-
-    # Create and add slider
-    steps = []
-    for i in range(len(fig.data)):
-        step = dict(
-            method="update",
-            args=[{"visible": [False] * len(fig.data)},
-                  {"title": f"Number of groups of size n with length similarity threshold of {i*.05:.0%}"}],  # layout attribute
-            label=f"{i*.05:.0%}"
-        )
-        step["args"][0]["visible"][i] = True  # Toggle i'th trace to "visible"
-        steps.append(step)
-
-    sliders = [dict(
-        active=0,
-        currentvalue={"prefix": "Threshold: "},
-        pad={"t": 50},
-        steps=steps
-    )]
-
-    fig.update_layout(
-        sliders=sliders,
-        bargap=0.1
-    )
-
-    fig.show()
+# def plot_gene_sim_histograms_with_slider(graph):
+#     fig = go.Figure()
+#
+#     for threshold in np.arange(0, 1.05, .05):
+#
+#         sizes = get_subnet_sizes(
+#             filter_graph_edges(graph, gene_sim_threshold=threshold)
+#             )
+#
+#         fig.add_trace(
+#             go.Histogram(
+#                 x=sizes,
+#                 visible=False,
+#                 xbins=dict(
+#                     start=0,
+#                     end=500,
+#                     size=2),
+#                 autobinx=False,
+#                 alignmentgroup=0,
+#                 name="",
+#                 hovertemplate="Size Range: %{x}<br>Count: %{y}<extra></extra>",
+#                 )
+#             )
+#
+#     # Make 10th trace visible
+#     fig.data[0].visible = True
+#
+#     # Create and add slider
+#     steps = []
+#     for i in range(len(fig.data)):
+#         step = dict(
+#             method="update",
+#             args=[{"visible": [False] * len(fig.data)},
+#                   {"title": f"Number of groups of size n with gene similarity threshold of {i*.05:.0%}"}],  # layout attribute
+#             label=f"{i*.05:.0%}"
+#         )
+#         step["args"][0]["visible"][i] = True  # Toggle i'th trace to "visible"
+#         steps.append(step)
+#
+#     sliders = [dict(
+#         active=0,
+#         currentvalue={"prefix": "Threshold: "},
+#         pad={"t": 50},
+#         steps=steps
+#     )]
+#
+#     fig.update_layout(
+#         sliders=sliders,
+#         bargap=0.1
+#     )
+#
+#     fig.show()
+#
+#
+# def plot_hi_gene_sim_histograms_with_slider(graph):
+#     fig = go.Figure()
+#
+#     for threshold in np.arange(0, 1.05, .05):
+#
+#         sizes = get_subnet_sizes(
+#             filter_graph_edges(graph, hi_gene_sim_threshold=threshold)
+#             )
+#
+#         fig.add_trace(
+#             go.Histogram(
+#                 x=sizes,
+#                 visible=False,
+#                 xbins=dict(
+#                     start=0,
+#                     end=500,
+#                     size=2),
+#                 autobinx=False,
+#                 alignmentgroup=0,
+#                 name="",
+#                 hovertemplate="Size Range: %{x}<br>Count: %{y}<extra></extra>",
+#                 )
+#             )
+#
+#     # Make 10th trace visible
+#     fig.data[0].visible = True
+#
+#     # Create and add slider
+#     steps = []
+#     for i in range(len(fig.data)):
+#         step = dict(
+#             method="update",
+#             args=[{"visible": [False] * len(fig.data)},
+#                   {"title": f"Number of groups of size n with HI gene similarity threshold of {i*.05:.0%}"}],  # layout attribute
+#             label=f"{i*.05:.0%}"
+#         )
+#         step["args"][0]["visible"][i] = True  # Toggle i'th trace to "visible"
+#         steps.append(step)
+#
+#     sliders = [dict(
+#         active=0,
+#         currentvalue={"prefix": "Threshold: "},
+#         pad={"t": 50},
+#         steps=steps
+#     )]
+#
+#     fig.update_layout(
+#         sliders=sliders,
+#         bargap=0.1
+#     )
+#
+#     fig.show()
+#
+#
+# def plot_overlap_sim_histograms_with_slider(graph):
+#     fig = go.Figure()
+#
+#     for threshold in np.arange(0, 1.05, .05):
+#
+#         sizes = get_subnet_sizes(
+#             filter_graph_edges(graph, overlap_threshold=threshold)
+#             )
+#
+#         fig.add_trace(
+#             go.Histogram(
+#                 x=sizes,
+#                 visible=False,
+#                 xbins=dict(
+#                     start=0,
+#                     end=500,
+#                     size=2),
+#                 autobinx=False,
+#                 alignmentgroup=0,
+#                 name="",
+#                 hovertemplate="Size Range: %{x}<br>Count: %{y}<extra></extra>",
+#                 )
+#             )
+#
+#     # Make 10th trace visible
+#     fig.data[0].visible = True
+#
+#     # Create and add slider
+#     steps = []
+#     for i in range(len(fig.data)):
+#         step = dict(
+#             method="update",
+#             args=[{"visible": [False] * len(fig.data)},
+#                   {"title": f"Number of groups of size n with overlap similarity threshold of {i*.05:.0%}"}],  # layout attribute
+#             label=f"{i*.05:.0%}"
+#         )
+#         step["args"][0]["visible"][i] = True  # Toggle i'th trace to "visible"
+#         steps.append(step)
+#
+#     sliders = [dict(
+#         active=0,
+#         currentvalue={"prefix": "Threshold: "},
+#         pad={"t": 50},
+#         steps=steps
+#     )]
+#
+#     fig.update_layout(
+#         sliders=sliders,
+#         bargap=0.1
+#     )
+#
+#     fig.show()
+#
+#
+# def plot_length_sim_histograms_with_slider(graph):
+#     fig = go.Figure()
+#
+#     for threshold in np.arange(0, 1.05, .05):
+#
+#         sizes = get_subnet_sizes(
+#             filter_graph_edges(graph, length_threshold=threshold)
+#             )
+#
+#         fig.add_trace(
+#             go.Histogram(
+#                 x=sizes,
+#                 visible=False,
+#                 xbins=dict(
+#                     start=0,
+#                     end=500,
+#                     size=2),
+#                 autobinx=False,
+#                 alignmentgroup=0,
+#                 name="",
+#                 hovertemplate="Size Range: %{x}<br>Count: %{y}<extra></extra>",
+#                 )
+#             )
+#
+#     # Make 10th trace visible
+#     fig.data[0].visible = True
+#
+#     # Create and add slider
+#     steps = []
+#     for i in range(len(fig.data)):
+#         step = dict(
+#             method="update",
+#             args=[{"visible": [False] * len(fig.data)},
+#                   {"title": f"Number of groups of size n with length similarity threshold of {i*.05:.0%}"}],  # layout attribute
+#             label=f"{i*.05:.0%}"
+#         )
+#         step["args"][0]["visible"][i] = True  # Toggle i'th trace to "visible"
+#         steps.append(step)
+#
+#     sliders = [dict(
+#         active=0,
+#         currentvalue={"prefix": "Threshold: "},
+#         pad={"t": 50},
+#         steps=steps
+#     )]
+#
+#     fig.update_layout(
+#         sliders=sliders,
+#         bargap=0.1
+#     )
+#
+#     fig.show()
