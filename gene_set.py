@@ -64,9 +64,8 @@ class GeneAnnotation:
 class Transcript(GeneAnnotation):
     """Gene sub-annotation of a single transcript.
 
-    Designed to be nested inside of a parent-level gene annotation.
+    Designed to be nested inside a parent-level gene annotation.
     """
-
     def __init__(self, gene_id, gene_name, transcript_id,
                  seqname, start, end, strand,
                  score=".", source=".", annotations=None, **kwargs):
@@ -87,7 +86,7 @@ class Transcript(GeneAnnotation):
 class Exon(GeneAnnotation):
     """Gene sub-annotation of a single exon of a transcript.
 
-    Designed to be nested inside of a transcript annotation.
+    Designed to be nested inside a transcript annotation.
     """
 
     def __init__(self, gene_id, gene_name, transcript_id, exon_id, exon_number,
@@ -102,7 +101,7 @@ class Exon(GeneAnnotation):
 class UTR3(GeneAnnotation):
     """Gene sub-annotation of a transcript's UTR-3 region.
 
-    Designed to be nested inside of a transcript annotation.
+    Designed to be nested inside a transcript annotation.
     """
 
     def __init__(self, gene_id, gene_name, transcript_id, exon_id, exon_number,
@@ -117,7 +116,7 @@ class UTR3(GeneAnnotation):
 class UTR5(GeneAnnotation):
     """Gene sub-annotation of a transcript's UTR-5 region.
 
-    Designed to be nested inside of a transcript annotation.
+    Designed to be nested inside a transcript annotation.
     """
 
     def __init__(self, gene_id, gene_name, transcript_id, exon_id, exon_number,
@@ -132,7 +131,7 @@ class UTR5(GeneAnnotation):
 class StartCodon(GeneAnnotation):
     """Gene sub-annotation of a transcript's start codon.
 
-    Designed to be nested inside of a transcript annotation.
+    Designed to be nested inside a transcript annotation.
     """
 
     def __init__(self, gene_id, gene_name, transcript_id, exon_id, exon_number,
@@ -147,7 +146,7 @@ class StartCodon(GeneAnnotation):
 class StopCodon(GeneAnnotation):
     """Gene sub-annotation of a transcript's stop codon.
 
-    Designed to be nested inside of a transcript annotation.
+    Designed to be nested inside a transcript annotation.
     """
 
     def __init__(self, gene_id, gene_name, transcript_id, exon_id, exon_number,
@@ -162,7 +161,7 @@ class StopCodon(GeneAnnotation):
 class CodingSequence(GeneAnnotation):
     """Gene sub-annotation of a transcript coding sequence.
 
-    Designed to be nested inside of a transcript annotation.
+    Designed to be nested inside a transcript annotation.
     """
 
     def __init__(self, gene_id, gene_name, transcript_id, exon_id, exon_number,
@@ -199,6 +198,7 @@ class Gene:
 
         self.hi_score = None
         self.pli_score = None
+        self.loeuf_score = None
 
         self._hash = self._make_hash()
 
@@ -344,11 +344,12 @@ class GeneSet:
                 results.append(gene)
         return results
 
-    def add_pLI_scores(self, pLI_info):
-        """Add pLI scores to genes from gnomad data."""
-        for gene, info in pLI_info.items():
+    def add_pLI_scores(self, gnomad_info):
+        """Add pLI and LOEUF scores to genes from gnomad data."""
+        for gene, info in gnomad_info.items():
             if gene in self.genes[str(info.chromosome)]:
                 self.genes[str(info.chromosome)][gene].pli_score = info.pLI
+                self.genes[str(info.chromosome)][gene].loeuf_score = info.oe_lof_upper
 
     def add_HI_scores(self, HI_info):
         """Add HI scores to genes."""
