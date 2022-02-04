@@ -10,6 +10,7 @@ from collections import namedtuple
 
 import mygene
 import pandas as pd
+from venn import venn
 
 from utilities import overlap, REFERENCE_CHR
 
@@ -200,6 +201,8 @@ class Gene:
         self.pli_score = None
         self.loeuf_score = None
 
+        self.dominant = False
+
         self._hash = self._make_hash()
 
     def __repr__(self):
@@ -229,18 +232,25 @@ class Gene:
         string += "\t".join([x.transcript_id for x in self.transcripts])
         return hash(string)
 
+    def is_haploinsufficient(self, pLI_threshold=0.9, HI_threshold=10,
+                             loeuf_threshold=.25):
+        """Check if gene has sufficient pLI, HI, or LOEUF score."""
+        return is_haploinsufficient(self, pLI_threshold, HI_threshold, loeuf_threshold)
+
 
 class GeneSet:
     """Database of gene annotations."""
 
     def __init__(self, path=None):
         self.path = path
-        self.genes = []
+        self.genes = {}
+        self.chromosomes = {}
 
         if self.path:
             self.genes = self.make_gene_set(path)
+            self.organize_chromosomes()
 
-        self.size = sum([len(chrom) for chrom in self.genes.values()])
+        self.size = len(self.genes)
 
     def __len__(self):
         return self.size
@@ -250,16 +260,11 @@ class GeneSet:
         genes = self.read_annotations(path)
         genes = self.make_annotation_objects(genes)
         genes = self.make_genes(genes)
-        genes = self.organize_genes(genes)
         return genes
 
     @staticmethod
     def read_annotations(file):
-        """Read gene annotations from file.
-
-        Example line:
-            ensGene	exon	95124	95454	.	+	.	gene_id "ENSG00000271530"; transcript_id "ENST00000604449"; exon_number "1"; exon_id "ENST00000604449.1"; gene_name "ENSG00000271530";
-        """
+        """Read gene annotations from file."""
         with gzip.open(file) as infile:
             data = infile.readlines()
 
@@ -321,25 +326,28 @@ class GeneSet:
         for gene in genes:
             gene.transcripts.sort(key=lambda x: x.end)
             gene.transcripts.sort(key=lambda x: x.start)
+        genes = {gene.gene_id: gene for gene in genes}
         return genes
 
-    @staticmethod
-    def organize_genes(genes):
+    def organize_chromosomes(self):
         """Group genes by chromosome in a chromosome dictionary."""
-        chrom_dict = {gene.seqname: {} for gene in genes}
-        for gene in genes:
+        chrom_dict = {}
+        # chrom_dict = {gene.seqname: {} for gene in self.genes}
+        for gene in self.genes.values():
+            if gene.seqname not in chrom_dict:
+                chrom_dict[gene.seqname] = {}
             chrom_dict[gene.seqname][gene.gene_id] = gene
-        return chrom_dict
+        self.chromosomes = chrom_dict
 
     def get_locus(self, seqname, start, stop=None):
         """Return all genes that intersect a base or range."""
-        if seqname not in self.genes:
+        if seqname not in self.chromosomes:
             return []
         if stop is None:
             stop = start
         query = range(start, stop + 1)
         results = []
-        for gene in self.genes[seqname].values():
+        for gene in self.chromosomes[seqname].values():
             if overlap(query, range(gene.start, gene.end+1)):
                 results.append(gene)
         return results
@@ -347,21 +355,36 @@ class GeneSet:
     def add_pLI_scores(self, gnomad_info):
         """Add pLI and LOEUF scores to genes from gnomad data."""
         for gene, info in gnomad_info.items():
-            if gene in self.genes[str(info.chromosome)]:
-                self.genes[str(info.chromosome)][gene].pli_score = info.pLI
-                self.genes[str(info.chromosome)][gene].loeuf_score = info.oe_lof_upper
+            if gene in self.genes:
+                self.genes[gene].pli_score = info.pLI
+                self.genes[gene].loeuf_score = info.oe_lof_upper
 
     def add_HI_scores(self, HI_info):
         """Add HI scores to genes."""
         for gene, info in HI_info.items():
-            if gene in self.genes[info.chromosome]:
-                self.genes[info.chromosome][gene].hi_score = info.HI_score
+            if gene in self.genes:
+                self.genes[gene].hi_score = info.HI_score
+
+    def annotate_dominant_genes(self, gene_list):
+        for gene in gene_list:
+            if gene in self.genes:
+                self.genes[gene].dominant = True
 
     def get_all_gene_ids(self):
         """Get gene IDs from all genes."""
-        return {gene.gene_id for chrom in self.genes.values()
-                for gene in chrom.values()}
+        return set(self.genes.keys())
 
+    def plot_haploinsufficient_venn(self, chromosome, pLI_threshold=0.9,
+                                     HI_threshold=10, loeuf_threshold=.25):
+        venn_dict = {
+            "HI": {gene for gene in self.chromosomes[chromosome].values()
+                   if gene.hi_score is not None and gene.hi_score <= HI_threshold},
+            "pLI": {gene for gene in self.chromosomes[chromosome].values()
+                    if gene.pli_score is not None and gene.pli_score >= pLI_threshold},
+            "LOEUF": {gene for gene in self.chromosomes[chromosome].values()
+                      if gene.loeuf_score is not None and gene.loeuf_score <= loeuf_threshold}
+            }
+        venn(venn_dict)
 
 # %% Haploinsufficients
 pLI_info = namedtuple("pLI_info", [
@@ -392,11 +415,12 @@ def read_gnomad_pli_data(file, pLI_max=1):
     data = pd.read_csv(file, sep="\t")
     data_objs = {}
     for i, row in data.iterrows():
-        pli_obj = pLI_info(*row)
-        if pli_obj.pLI > pLI_max:
+        if row["pLI"] > pLI_max:
             continue
+        if pd.isna(row["oe_lof_upper"]):
+            row["oe_lof_upper"] = None
+        pli_obj = pLI_info(*row)
         data_objs[pli_obj.gene_id] = pli_obj
-
     return data_objs
 
 
@@ -412,6 +436,13 @@ def read_HI_gene_data(file, HI_max=100):
     data = {x[0]: HI_info(*x) for x in data}
     data = {x: y for x, y in data.items() if y.HI_score < HI_max}
     return data
+
+
+def read_dominant_gene_list(file):
+    with open(file) as infile:
+        gene_list = infile.readlines()
+    gene_list = [gene.strip() for gene in gene_list]
+    return gene_list
 
 
 def lookup_gene_symbols(symbol_list):
@@ -511,26 +542,33 @@ def symbol_relookup_missing(mygene_lookup, mygene_instance):
 
 
 # %% Helper Functions
-def is_haploinsufficient(gene, pLI_threshold=0.9, HI_threshold=10):
+def is_haploinsufficient(gene, pLI_threshold=0.9, HI_threshold=10,
+                         loeuf_threshold=.25, mode="any"):
     """Check if gene has sufficiently low pLI or HI score."""
-    hi_pass = gene.hi_score is not None and gene.hi_score <= HI_threshold
     pli_pass = gene.pli_score is not None and gene.pli_score >= pLI_threshold
-    return hi_pass or pli_pass
+    hi_pass = gene.hi_score is not None and gene.hi_score <= HI_threshold
+    loeuf_pass = gene.loeuf_score is not None and gene.loeuf_score <= loeuf_threshold
+    if mode == "all":
+        return all([hi_pass, pli_pass, loeuf_pass])
+    else:
+        return any([hi_pass, pli_pass, loeuf_pass])
 
 
 # %% Main
 def _read_defaults():
     pli_genes = read_gnomad_pli_data("Data/gnomad.v2.1.1.lof_metrics.by_gene.6.tsv")
     hi_genes = make_hi_genes("Data/HI_Predictions.v3.chr6.bed")
-    return pli_genes, hi_genes
+    dominant_genes = read_dominant_gene_list("/home/tyler/Documents/Chr6_docs/GeneSets/dominant_genes.txt")
+    return pli_genes, hi_genes, dominant_genes
 
 
 def main():
     """Load geneset."""
     geneset = GeneSet("/home/tyler/Documents/Chr6_docs/GeneSets/hg19.ensGene.chr6.gtf.gz")
-    pli_genes, hi_genes = _read_defaults()
+    pli_genes, hi_genes, dominant_genes = _read_defaults()
     geneset.add_pLI_scores(pli_genes)
     geneset.add_HI_scores(hi_genes)
+    geneset.annotate_dominant_genes(dominant_genes)
     return geneset
 
 

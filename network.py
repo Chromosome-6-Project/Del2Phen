@@ -19,8 +19,8 @@ pio.renderers.default = "browser"
 
 # %% Nodes and Edges
 Node = namedtuple("Node", ["id", "label", "group", "color",
-                           "value", "title", "HI", "ranges"])
-Edge = namedtuple("Edge", ["edge_id", "id1", "id2", "width", "color", "title",
+                           "value", "title", "hi_genes", "dom_genes", "ranges"])
+Edge = namedtuple("Edge", ["edge_id", "id1", "id2", "width", "color", "title", "change",
                            "length_sim", "overlap_sim", "gene_sim", "hi_sim"])
 
 
@@ -44,6 +44,7 @@ def build_network_nodes(comparison_table):
         color = colors[group]
         if group == "HI Gene":
             hi = comparison_table.patient_db[patient].score
+            dom = 0
             value = 2
             title = (f"<p>{patient}<br>"
                      f"Group: {group}<br>"
@@ -51,20 +52,21 @@ def build_network_nodes(comparison_table):
                      f"Genes: {value}<br></p>")
         else:
             hi = len(comparison_table.patient_db[patient].all_HI_genes())
+            dom = len(comparison_table.patient_db[patient].all_dominant_genes())
             value = lookup.gene_count
             title = (f"<p>{patient}<br>"
                      f"Group: {group}<br>"
                      f"Affected genes: {value}<br>"
                      f"Affected HI genes: {hi}<br>"
                      f"HPO terms: {lookup.hpo_count}</p>")
-        node = Node(patient, patient, group, color, value, title, hi, ranges)
+        node = Node(patient, patient, group, color, value, title, hi, dom, ranges)
         nodes[patient] = node
     return nodes
 
 
 def write_network_nodes(nodes, out, normalize=True):
     """Write patient nodes to CSV file."""
-    writer = ["id,label,group,color,value,title,hi,ranges\n"]
+    writer = ["id,label,group,color,value,title,hi,dom,ranges\n"]
     for node in sorted(list(nodes.values()), key=lambda x: x[0]):
         if normalize:
             node = list(node)
@@ -78,12 +80,14 @@ def build_network_edges(comparison_table):
     """Build patient-patient edge objects from comparison table."""
     edges = []
     for intersect in comparison_table:
-        if not intersect.gene_count or intersect.patients[0] == intersect.patients[1]:
+        if intersect.loci_shared_size == 0 or intersect.patients[0] == intersect.patients[1]:
             continue
 
         id1 = intersect.patients[0].id
         id2 = intersect.patients[1].id
         edge_id = f"{id1}_{id2}"
+
+        change = intersect.change
 
         length_sim = intersect.length_similarity
 
@@ -101,22 +105,23 @@ def build_network_edges(comparison_table):
 
         color = "gray"
         title = (f"<p>{id1}---{id2}:<br>"
+                 f"Change: {change}<br>"
                  f"Overlap: {overlap} ({overlap_sim:.2%})<br>"
                  f"Shared genes: {gene_count} ({gene_sim:.2%})<br>"
                  f"Shared HI genes: {hi_gene_count} ({hi_gene_sim:.2%})<br>"
                  f"Shared HPO terms: {hpo_count} ({hpo_sim:.2%})<br></p>")
-        edges.append(Edge(edge_id, id1, id2, gene_count, color, title,
+        edges.append(Edge(edge_id, id1, id2, overlap_sim*100, color, title, change,
                           length_sim, overlap_sim, gene_sim, hi_gene_sim))
     return edges
 
 
-def write_network_edges(edges, out, normalize=True):
+def write_network_edges(edges, out, normalize_width=True):
     """Write patient-patient edges to CSV file."""
-    writer = ["id,from,to,width,color,title,length_sim,overlap_sim,gene_sim,hi_gene_sim\n"]
+    writer = ["id,from,to,width,color,title,change,length_sim,overlap_sim,gene_sim,hi_gene_sim\n"]
     for edge in edges:
-        if normalize:
+        if normalize_width:
             edge = list(edge)
-            edge[3] = log(edge[3], 2)
+            edge[3] = max(1, log(edge[3], 2))
         writer.append(",".join([str(x) for x in edge]) + "\n")
     with open(out, "w") as outfile:
         outfile.writelines(writer)
@@ -158,6 +163,15 @@ def make_nx_edges(edges):
 def make_nx_graph(nodes, edges):
     nodes = make_nx_nodes(nodes)
     edges = make_nx_edges(edges)
+    graph = nx.Graph()
+    graph.add_nodes_from(nodes)
+    graph.add_edges_from(edges)
+    return graph
+
+
+def make_nx_graph_from_comparisons(comparison_table):
+    nodes = make_nx_nodes(build_network_nodes(comparison_table))
+    edges = make_nx_edges(build_network_edges(comparison_table))
     graph = nx.Graph()
     graph.add_nodes_from(nodes)
     graph.add_edges_from(edges)

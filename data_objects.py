@@ -393,6 +393,11 @@ class Patient:
                     if is_haploinsufficient(gene, pLI_threshold, HI_threshold)}
         return hi_genes
 
+    def all_dominant_genes(self):
+        dom_genes = {gene for cnv in self.cnvs for gene in cnv.genes
+                     if gene.dominant}
+        return dom_genes
+
     def get_true_hpos(self):
         trues = {term for term, response in self.hpo.items()
                  if response == "T"}

@@ -409,13 +409,20 @@ class ComparisonTable:
     @classmethod
     def compare_all(cls, patient_1, patient_2):
         """Compare all metrics between two patients."""
+        cnv_type = {cnv.change for cnv in patient_1.cnvs + patient_2.cnvs}
+        if len(cnv_type) == 0:
+            cnv_type = "N/A"
+        elif len(cnv_type) > 1:
+            cnv_type = "Mixed"
+        else:
+            cnv_type = list(cnv_type)[0]
         length_compare = cls.compare_length(patient_1, patient_2)
         loci_compare = cls.compare_loci(patient_1, patient_2)
         gene_compare = cls.compare_genes(patient_1, patient_2)
         hi_compare = cls.compare_HI_genes(patient_1, patient_2)
         hpo_compare = cls.compare_hpos(patient_1, patient_2)
         comparison = PatientIntersect(
-            patient_1, patient_2,
+            patient_1, patient_2, cnv_type,
             length_compare, loci_compare, gene_compare, hi_compare, hpo_compare
             )
         return comparison
@@ -525,7 +532,7 @@ class ComparisonTable:
 
     def filter_patient_comparisons(self, patient_id, length_similarity=0,
                                    loci_similarity=0, gene_similarity=0,
-                                   hpo_similarity=0):
+                                   hi_similarity=0, hpo_similarity=0):
         patient1 = self.patient_db[patient_id]
         intersections = self.lookup(patient_id, "all")
         filtered = []
@@ -544,11 +551,38 @@ class ComparisonTable:
             if not all([intersect.length_similarity >= length_similarity,
                         intersect.loci_similarity >= loci_similarity,
                         intersect.gene_similarity >= gene_similarity,
+                        intersect.hi_gene_similarity >= hi_similarity,
                         intersect.hpo_similarity >= hpo_similarity]):
                 continue
 
             filtered.append(patient2)
         return filtered
+
+    def filter_patient_intersections(self, patient_id, length_similarity=0,
+                                     loci_similarity=0, gene_similarity=0,
+                                     hi_similarity=0, hpo_similarity=0,
+                                     include_self=False):
+        intersections = {intersect.get_other_id(patient_id): intersect
+                         for intersect in self.lookup(patient_id, "all")
+                         if all([intersect.length_similarity >= length_similarity,
+                                 intersect.loci_similarity >= loci_similarity,
+                                 intersect.gene_similarity >= gene_similarity,
+                                 intersect.hi_gene_similarity >= hi_similarity,
+                                 intersect.hpo_similarity >= hpo_similarity])}
+        if include_self is False and patient_id in intersections:
+            del intersections[patient_id]
+        return intersections
+
+    def test_homogeneity(self, patient_id, phenotypes, length_similarity=0,
+                                     loci_similarity=0, gene_similarity=0,
+                                     hi_similarity=0, hpo_similarity=0):
+        intersections = self.filter_patient_intersections(patient_id)
+
+    def test_all_homogeneities(self, phenotypes_of_interest):
+        for patient in self.patient_db:
+            row = self.lookup(patient.id, "all")
+
+
 
 # =============================================================================
 #     @staticmethod
@@ -899,11 +933,13 @@ class PatientIntersect:
 
     # pylint: disable=too-many-instance-attributes
 
-    def __init__(self, patient_1, patient_2,
+    def __init__(self, patient_1, patient_2, cnv_type,
                  length_compare, loci_compare,
                  gene_compare, hi_gene_compare,
                  hpo_compare):
         self.patients = [patient_1, patient_2]
+        self.ids = {patient_1.id, patient_2.id}
+        self.change = cnv_type
 
         self.length_similarity = length_compare
 
@@ -948,6 +984,13 @@ class PatientIntersect:
         """Get HPO portion of intersect."""
         return self.hpos, self.hpo_count, self.hpo_similarity
 
+    def get_other_id(self, ID):
+        if ID not in self.ids:
+            raise IndexError("This ID not present.")
+        if self.ids == {ID}:
+            return ID
+        other_id = list(self.ids - {ID})[0]
+        return other_id
 
 # XXX: This probably doesn't work anymore.
 # def write_comparison_table(table, patients, out, self_match="size"):
@@ -1095,9 +1138,9 @@ def main(geno_file, pheno_file):
     DataManager.print_summary_counts(patients)
 
 
-def test(genotypes="/home/tyler/Documents/Chr6_docs/genotypes.csv",
-         phenotypes="/home/tyler/Documents/Chr6_docs/phenotypes.csv",
-         patient_hpo="/home/tyler/Documents/Chr6_docs/c6_research_patients_2020-10-28_11_27_04.csv"):
+def test(genotypes="/home/tyler/Documents/Chr6_docs/PatientData/array.2022-01-29.csv",
+         phenotypes="/home/tyler/Documents/Chr6_docs/PatientData/phenotypes.2022-01-29.csv",
+         patient_hpo="/home/tyler/Documents/Chr6_docs/PatientData/hpo.2022-01-29.csv"):
     """Test run."""
     # Read genome dictionary.
     print("Reading reference genome dictionary...")
