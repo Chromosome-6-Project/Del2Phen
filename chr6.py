@@ -9,23 +9,17 @@ import bz2
 import csv
 from collections import namedtuple
 from math import sqrt
-import _pickle as cPickle
+import pickle
 
 import numpy as np
 import pandas as pd
 from pronto import Ontology, Term
 
-from data_objects import (
-    Patient, PatientDatabase, GenomeDict,
-    )
+from data_objects import Patient, PatientDatabase, GenomeDict
 
 import gene_set
 
-from utilities import (
-    jaccard,
-    length_of_range_intersects,
-    merge_range_list,
-    )
+from utilities import jaccard, length_of_range_intersects, merge_range_list
 
 
 class DataManager:
@@ -219,130 +213,21 @@ class DataManager:
         with open(out, "w") as outfile:
             outfile.writelines(writer)
 
-# =============================================================================
-#     @staticmethod
-#     def read_HI_genes(file):
-#         """Read HI gene information file."""
-#         with open(file) as infile:
-#             infile.readline()
-#             data = infile.readlines()
-#         data = [x.lstrip("chr").rstrip("\n").split("\t") for x in data]
-#         data = {x[3].split("|")[0]: [x[0], int(x[1]), int(x[2]),
-#                                      float(x[3].split("|")[-1].rstrip("%"))]
-#                 for x in data}
-#         return data
-# =============================================================================
+    @staticmethod
+    def read_patient_drop_list(drop_list_file):
+        with open(drop_list_file) as infile:
+            drop_list = infile.readlines()
+        drop_list = [name.strip() for name in drop_list]
+        return drop_list
 
-# =============================================================================
-#     @classmethod
-#     def make_HI_objects(cls, hi_genes, geneset, gene_lookup):
-#         """Construct HI_Gene objects from HI gene info."""
-#         hi_gene_objs = {}
-#         for geneID, hi_gene in hi_genes.items():
-#             this_hi = HI_Gene(geneID)
-#             this_hi.genotypes.append(dict(zip(
-#                 ["Chromosome", "Start positie in Hg19", "Stop positie in Hg19", "imbalance"],
-#                 hi_gene[:3] + ["HI Gene"]
-#                 )))
-#             this_hi.cnvs = this_hi.extract_cnvs()
-#             this_hi.identify_gene_overlaps(geneset)
-#
-#             symbol_results = cls.find_symbol_in_results(geneID, gene_lookup)
-#             if symbol_results is not None:
-#                 refine = [gene for gene in this_hi.cnvs[0].genes
-#                           if gene.gene_id in symbol_results]
-#                 if not refine:
-#                     print(f"Warning: No refined matches for {geneID}.")
-#                 else:
-#                     this_hi.cnvs[0].genes = refine
-#                     this_hi.refined = True
-#
-#             this_hi.score = hi_gene[3]
-#             this_hi.origin = "HI Gene"
-#             hi_gene_objs[geneID] = this_hi
-#         return hi_gene_objs
-#
-#     @staticmethod
-#     def find_symbol_in_results(symbol, results):
-#         if symbol in results["final"]:
-#             return [results["final"][symbol]["ensembl"]["gene"]]
-#         if symbol in results["multi"]:
-#             return [gene["gene"] for gene in results["multi"][symbol]["ensembl"]]
-#         if symbol in results["bad"] or results["none"]:
-#             return None
-#
-#     @staticmethod
-#     def symbol_lookup_multi(mygene_instance, gene_symbols):
-#         results = mygene_instance.querymany(gene_symbols, scopes="symbol",
-#                                             species="human", fields="ensembl.gene")
-#         results_final = {}
-#         results_bad = {}
-#         results_none = {}
-#         results_multi = {}
-#         for result in results:
-#             query = result["query"]
-#             if "notfound" in result and result["notfound"]:
-#                 results_none[query] = result
-#                 continue
-#             if "ensembl" not in result:
-#                 results_bad[query] = result
-#                 continue
-#             if isinstance(result["ensembl"], list):
-#                 results_multi[query] = result
-#                 continue
-#             if query not in results_final:
-#                 results_final[query] = result
-#                 continue
-#             if result["_score"] > results_final[query]["_score"]:
-#                 results_final[query] = result
-#         results = {"final": results_final, "multi": results_multi,
-#                    "none": results_none, "bad": results_bad}
-#         return results
-# =============================================================================
-
-    # @staticmethod
-    # def read_gnomad_pli_data(file):
-    #     with open(file) as infile:
-    #         reader = csv.DictReader(infile, delimiter="\t")
-    #         data = [row for row in reader]
-    #         # header = infile.readline()
-    #         # data = infile.readlines()
-    #     # header = header.rstrip("\n").split("\t")
-    #     # data = [line.rstrip("\n").split("\t") for line in data]
-    #     data = {x["gene"]: x for x in data}
-    #     return data
-
-    # @staticmethod
-    # def symbol_lookup(mygene_instance, gene_symbol):
-    #     results = mygene_instance.query(gene_symbol, fields="ensembl.gene", species="human")
-    #     if len(results["hits"]) > 1:
-    #         print(f"Warning: Multiple hits for {gene_symbol}")
-    #         return None
-    #     if len(results["hits"]) == 0:
-    #         print(f"Warning: No results found for {gene_symbol}")
-    #     return results["hits"][0]["ensembl"]["gene"]
-
-# =============================================================================
-# HI_Gene = namedtuple("HI_Gene", ["chr", "locus", "HI_score"])
-#
-# class HI_Manager:
-#     def __init__(self, HI_file=None, threshold=10):
-#         self.hi_genes = []
-#         if HI_file is not None:
-#             self.read_HI_genes(HI_file, threshold)
-#
-#     @staticmethod
-#     def read_HI_genes(file):
-#         """Read HI gene information file."""
-#         with open(file) as infile:
-#             infile.readline()
-#             data = infile.readlines()
-#         data = [x.lstrip("chr").rstrip("\n").split("\t") for x in data]
-#         data = {x[3].split("|")[0]: [x[0], int(x[1]), int(x[2]),
-#                                      float(x[3].split("|")[-1].rstrip("%"))]
-#                 for x in data}
-#         return data
-# =============================================================================
+    @staticmethod
+    def filter_patients(patient_dict, drop_list, remove_ungenotyped=True,
+                        remove_unphenotyped=True):
+        patients_filtered = {name: patient for name, patient in patient_dict.items()
+                             if name not in drop_list
+                             and not (remove_ungenotyped and not patient.genotypes)
+                             and not (remove_unphenotyped and not patient.phenotypes)}
+        return patients_filtered
 
 
 # %% Comparisons
@@ -366,13 +251,6 @@ class ComparisonTable:
     def __len__(self):
         return self.size
 
-    def read_from_existing(self, comparison_table):
-        self.patient_db = comparison_table.patient_db
-        self.raw = comparison_table.raw
-        self.index = comparison_table.index
-        self.array = comparison_table.array
-        self.size = comparison_table.size
-
     def __iter__(self):
         """Initialize iterable."""
         self.__iteri__ = 0
@@ -389,6 +267,41 @@ class ComparisonTable:
             self.__iteri__ += 1
             self.__iterj__ = self.__iteri__
         return result
+
+    def make_array(self):
+        """Convert raw comparison dictionary to numpy array."""
+        array = []
+        for patient1 in self.index:
+            values = []
+            for patient2 in self.index:
+                if patient2 in self.raw[patient1]:
+                    values.append(self.raw[patient1][patient2])
+                else:
+                    values.append(self.raw[patient2][patient1])
+            array.append(values)
+        array = np.array(array)
+        return array
+
+    def make_index(self):
+        """Create name-to-number mapping to look up names in numpy array."""
+        return {j: i for i, j in enumerate(self.raw)}
+
+    def lookup(self, pid1, pid2=None):
+        """Look up patient or patient-patient intersect in comparison array."""
+        if not pid2:
+            return self.array[self.index[pid1]][self.index[pid1]]
+        if pid2.lower() == "all":
+            return self.array[self.index[pid1]]
+        if pid1 not in self.index:
+            raise KeyError("ID not found.")
+        return self.array[self.index[pid1]][self.index[pid2]]
+
+    def read_from_existing(self, comparison_table):
+        self.patient_db = comparison_table.patient_db
+        self.raw = comparison_table.raw
+        self.index = comparison_table.index
+        self.array = comparison_table.array
+        self.size = comparison_table.size
 
     def compare_patients(self):
         """Compare all patients to each other."""
@@ -483,34 +396,7 @@ class ComparisonTable:
         jaccard_index, intersect = jaccard(hpo_set1, hpo_set2)
         return jaccard_index, intersect
 
-    def make_array(self):
-        """Convert raw comparison dictionary to numpy array."""
-        array = []
-        for patient1 in self.index:
-            values = []
-            for patient2 in self.index:
-                if patient2 in self.raw[patient1]:
-                    values.append(self.raw[patient1][patient2])
-                else:
-                    values.append(self.raw[patient2][patient1])
-            array.append(values)
-        array = np.array(array)
-        return array
-
-    def make_index(self):
-        """Create name-to-number mapping to look up names in numpy array."""
-        return {j: i for i, j in enumerate(self.raw)}
-
-    def lookup(self, pid1, pid2=None):
-        """Look up patient or patient-patient intersect in comparison array."""
-        if not pid2:
-            return self.array[self.index[pid1]][self.index[pid1]]
-        if pid2.lower() == "all":
-            return self.array[self.index[pid1]]
-        if pid1 not in self.index:
-            raise KeyError("ID not found.")
-        return self.array[self.index[pid1]][self.index[pid2]]
-
+    # TODO: Needs to be updated, won't work currently.
     def write_all_comparisons(self, outfile):
         """Write comparison results to TSV file."""
         properties = ["length_similarity",
@@ -573,16 +459,50 @@ class ComparisonTable:
             del intersections[patient_id]
         return intersections
 
-    def test_homogeneity(self, patient_id, phenotypes, length_similarity=0,
+    def make_patient_intersection_group(self, patient_id, length_similarity=0,
+                                        loci_similarity=0, gene_similarity=0,
+                                        hi_similarity=0, hpo_similarity=0,
+                                        include_self=True):
+        intersections = self.filter_patient_intersections(
+            patient_id, length_similarity, loci_similarity, gene_similarity,
+            hi_similarity, hpo_similarity, include_self
+            )
+        patients = [intersection.get_other_patient(patient_id)
+                    for intersection in intersections.values()]
+        return patients
+
+    def test_phenotype_homogeneities(self, patient_id, phenotypes, length_similarity=0,
                                      loci_similarity=0, gene_similarity=0,
                                      hi_similarity=0, hpo_similarity=0):
-        intersections = self.filter_patient_intersections(patient_id)
+        group = self.make_patient_intersection_group(
+            patient_id, length_similarity, loci_similarity,
+            gene_similarity, hi_similarity, hpo_similarity
+            )
+        size = len(group)
+        homogeneities = {
+            phenotype: sum([patient.hpo[phenotype] == "T" for patient in group
+                            if phenotype in patient.hpo])
+            for phenotype in phenotypes
+            }
+        homogeneities = {phenotype: PhenotypeHomogeneity(patient_id, phenotype, size, prevalence)
+                         for phenotype, prevalence in homogeneities.items()}
+        homogeneities = GroupPhenotypeHomogeneity(homogeneities)
+        return homogeneities
 
-    def test_all_homogeneities(self, phenotypes_of_interest):
-        for patient in self.patient_db:
-            row = self.lookup(patient.id, "all")
+    def test_all_homogeneities(self, phenotypes, length_similarity=0,
+                               loci_similarity=0, gene_similarity=0,
+                               hi_similarity=0, hpo_similarity=0,
+                               group_size_threshold=5, include_isolates=False):
+        params = [phenotypes, length_similarity, loci_similarity,
+                  gene_similarity, hi_similarity, hpo_similarity]
+        all_homogeneities = {patient: self.test_phenotype_homogeneities(patient, *params)
+                             for patient in self.index.keys()}
+        upper_homogeneities = {patient: homogen for patient, homogen in all_homogeneities.items()
+                               if homogen.group_size >= group_size_threshold}
+        lower_homogeneities = {patient: homogen for patient, homogen in all_homogeneities.items()
+                               if homogen.group_size < group_size_threshold}
 
-
+        return all_homogeneities, upper_homogeneities, lower_homogeneities
 
 # =============================================================================
 #     @staticmethod
@@ -937,7 +857,7 @@ class PatientIntersect:
                  length_compare, loci_compare,
                  gene_compare, hi_gene_compare,
                  hpo_compare):
-        self.patients = [patient_1, patient_2]
+        self.patients = {patient_1.id: patient_1, patient_2.id: patient_2}
         self.ids = {patient_1.id, patient_2.id}
         self.change = cnv_type
 
@@ -958,9 +878,13 @@ class PatientIntersect:
         self.hpos = hpo_compare[1]
         self.hpo_count = len(hpo_compare[1])
 
+        self.self_compare = False
+        if len(self.ids) == 1:
+            self.self_compare = True
+
     def __repr__(self):
         """Get official string representation."""
-        string = (f"PatientIntersect(patients=[{self.patients[0].id}, {self.patients[1].id}], "
+        string = (f"PatientIntersect(patients=[{', '.join(self.patients.keys())}], "
                   f"length_similarity={self.length_similarity}, "
                   f"loci_similarity={self.loci_similarity}, "
                   f"gene_similarity={self.gene_similarity}, "
@@ -969,7 +893,7 @@ class PatientIntersect:
 
     def __str__(self):
         """Get pretty-printing string representation."""
-        string = (f"Similarities of {self.patients[0].id} vs. {self.patients[1].id}:\n"
+        string = (f"Similarities of {' vs. '.join(self.patients.keys())}:\n"
                   f"  Genes: {self.gene_similarity}\n"
                   f"  HPO terms: {self.hpo_similarity}\n"
                   f"  Length: {self.length_similarity}\n"
@@ -985,12 +909,16 @@ class PatientIntersect:
         return self.hpos, self.hpo_count, self.hpo_similarity
 
     def get_other_id(self, ID):
-        if ID not in self.ids:
+        if ID not in self.patients:
             raise IndexError("This ID not present.")
-        if self.ids == {ID}:
+        if set(self.patients.keys()) == {ID}:
             return ID
-        other_id = list(self.ids - {ID})[0]
+        other_id = list(set(self.patients.keys()) - {ID})[0]
         return other_id
+
+    def get_other_patient(self, ID):
+        other_id = self.get_other_id(ID)
+        return self.patients[other_id]
 
 # XXX: This probably doesn't work anymore.
 # def write_comparison_table(table, patients, out, self_match="size"):
@@ -1018,7 +946,6 @@ class PatientIntersect:
 
 
 # %% Predictions
-
 class TraitPrediction:
     def __init__(self, trait_id, trait_name, population, true, false,
                  unsure, na, group=None):
@@ -1091,42 +1018,75 @@ PredictInfo = namedtuple("PredictionInfo",
                          ["count", "frequency", "TP"])
 
 
-# =============================================================================
-# class PatientIntersect:
-#     """Record of similarity between two patients."""
-#
-#     def __init__(self, patient1, patient2,
-#                  genes, gene_count, gene_similarity,
-#                  hpos, hpo_count, hpo_similarity):
-#         self.patients = [patient1, patient2]
-#         self.genes = genes
-#         self.gene_count = gene_count
-#         self.gene_similarity = gene_similarity
-#         self.hpos = hpos
-#         self.hpo_count = hpo_count
-#         self.hpo_similarity = hpo_similarity
-#
-#     def __repr__(self):
-#         """Get official string representation."""
-#         string = (f"PatientIntersect(patients={self.patients}, "
-#                   f"gene_count={self.gene_count}, hpo_count={self.hpo_count})")
-#         return string
-#
-#     def __str__(self):
-#         """Get pretty-printing string representation."""
-#         string = (f"{self.patients[0]} vs. {self.patients[1]}:\n"
-#                   f"  Genes: {self.gene_count}\n"
-#                   f"  HPO terms: {self.hpo_count}")
-#         return string
-#
-#     def gene_info(self):
-#         """Get gene portion of intersect."""
-#         return self.genes, self.gene_count, self.gene_similarity
-#
-#     def hpo_info(self):
-#         """Get HPO portion of intersect."""
-#         return self.hpos, self.hpo_count, self.hpo_similarity
-# =============================================================================
+class PhenotypeHomogeneity:
+    def __init__(self, group_id, phenotype, group_size, prevalence,):
+        self.group_id = group_id
+        self.phenotype = phenotype
+        self.group_size = group_size
+        self.prevalence = prevalence
+        self.relative_prevalence = 0
+        if self.group_size > 0:
+            self.relative_prevalence = self.prevalence/self.group_size
+
+    def __repr__(self):
+        string = (f"PhenotypeHomogeneity("
+                  f"group_id={self.group_id}, "
+                  f"phenotype='{self.phenotype.name}', "
+                  f"group_size={self.group_size}, "
+                  f"prevalence={self.prevalence} ({self.relative_prevalence:.2%}))")
+        return string
+
+
+class GroupPhenotypeHomogeneity:
+    def __init__(self, phenotype_homogeneities):
+        self.homogeneities = phenotype_homogeneities
+        self.group_id = self.set_group_id()
+        self.group_size = self.set_group_size()
+        self.phenotypes = list(self.homogeneities.keys())
+        self.num_phenotypes = len(self.phenotypes)
+        self.num_present = self.count_present_phenotypes()
+        self.proportion_present = self.calculate_overall_proportion_present()
+
+    def __str__(self):
+        string = (f"GroupPhenotypeHomogeneity(num_phenotypes={self.num_phenotypes}, "
+                  f"phenotypes_present={self.num_present} "
+                  f"({self.proportion_present:.2%}))")
+        return string
+
+    def count_present_phenotypes(self):
+        counts = sum([phenotype.prevalence >= 1
+                      for phenotype in self.homogeneities.values()])
+        return counts
+
+    def count_phenotypes_above_relative_prevalence(self, threshold):
+        counts = sum([phenotype.relative_prevalence >= threshold
+                      for phenotype in self.homogeneities.values()])
+        return counts
+
+    def calculate_homogeneity(self, threshold):
+        if self.num_present == 0:
+            return 0
+        counts = self.count_phenotypes_above_relative_prevalence(threshold)
+        homogeneity = counts / self.num_present
+        return homogeneity
+
+    def calculate_overall_proportion_present(self):
+        prevalence = self.num_present / self.num_phenotypes
+        return prevalence
+
+    def set_group_size(self):
+        group_size = {x.group_size for x in self.homogeneities.values()}
+        if len(group_size) != 1:
+            raise ValueError("PhenotypeHomogeneities have different group sizes.")
+        group_size = list(group_size)[0]
+        return group_size
+
+    def set_group_id(self):
+        group_id = {x.group_id for x in self.homogeneities.values()}
+        if len(group_id) != 1:
+            raise ValueError("PhenotypeHomogeneities have different group IDs.")
+        group_id = list(group_id)[0]
+        return group_id
 
 
 # %% Main
@@ -1138,9 +1098,7 @@ def main(geno_file, pheno_file):
     DataManager.print_summary_counts(patients)
 
 
-def test(genotypes="/home/tyler/Documents/Chr6_docs/PatientData/array.2022-01-29.csv",
-         phenotypes="/home/tyler/Documents/Chr6_docs/PatientData/phenotypes.2022-01-29.csv",
-         patient_hpo="/home/tyler/Documents/Chr6_docs/PatientData/hpo.2022-01-29.csv"):
+def test(genotypes, phenotypes, patient_hpo, drop_list_file, expand_hpos=False):
     """Test run."""
     # Read genome dictionary.
     print("Reading reference genome dictionary...")
@@ -1186,13 +1144,17 @@ def test(genotypes="/home/tyler/Documents/Chr6_docs/PatientData/array.2022-01-29
     # !!!: This is where you can choose whether or not to expand HPO terms.
     print("Building patient objects...")
     patients = DataManager.make_patients(genotypes, phenotypes, geneset,
-                                         hpos, ontology, expand_hpos=False)
-    # patients.update(hi_genes)
+                                         hpos, ontology, expand_hpos=expand_hpos)
+
+    print("Filtering patients...")
+    drop_list = DataManager.read_patient_drop_list(drop_list_file)
+    patients = DataManager.filter_patients(patients, drop_list)
+
     patients = PatientDatabase(patients)
-    # patients = PatientDatabase({patient.id: patient for patient in list(patients.values())[:10]})
-    # DataManager.print_summary_counts(patients)
+
     print("Running comparisons...")
     comparison = ComparisonTable(patients)
+
     print("Done.")
     return (
         genotypes,
@@ -1215,8 +1177,36 @@ def predict_test(comparison, patient_list="C:/Users/Ty/Documents/Chr6/Predict_te
     return all_tests, aafkes_tests
 
 
+def phenotype_homo_test(comparison, ontology, hi_similarity, phenotypes=None):
+    if phenotypes is None:
+        with open("/home/tyler/Documents/Chr6_docs/Phenotype_Homogeneity/selected_phenotypes_hpos.txt") as infile:
+            selected_hpos = infile.readlines()
+        selected_hpos = [ontology[x.strip().split("\t")[1]] for x in selected_hpos]
+    else:
+        selected_hpos = phenotypes
+    homos = comparison.test_all_homogeneities(selected_hpos, hi_similarity=hi_similarity)[0]
+    pheno_data = {hpo: [] for hpo in selected_hpos}
+    for ID, homogroup in homos.items():
+        for pheno, homo in homogroup.homogeneities.items():
+            pheno_data[pheno].append(homo)
+    table_dict = {phenotype.name:
+                      {f"{homo.group_id} ({homo.group_size})": homo.relative_prevalence
+                       for homo in sorted(homos, key=lambda x: x.group_size, reverse=True)}
+                  for phenotype, homos in pheno_data.items()}
+    table_dict["Phenotype Homogeneity"] = {f"{homo.group_id} ({homo.group_size})": homo.calculate_homogeneity(.2)
+                                           for homo in sorted(homos.values(), key=lambda x: x.group_size)}
+    return table_dict, selected_hpos, pheno_data, homos
+
+
 if __name__ == "__main__":
     # import sys
     # main(sys.argv[1], sys.argv[2])
     # genotypes, phenotypes, patients, geneset = test()
-    _, _, my_patients, my_comparison, my_geneset, my_ontology, my_genomedict = test()
+    _, _, my_patients, my_comparison, my_geneset, my_ontology, my_genomedict = test(
+        genotypes="/home/tyler/Documents/Chr6_docs/PatientData/2022-Feb-21/c6_array_2022-02-21_18_28_06.csv",
+        phenotypes="/home/tyler/Documents/Chr6_docs/PatientData/2022-Feb-21/c6_questionnaire_2022-02-21_10_18_09.csv",
+        patient_hpo="/home/tyler/Documents/Chr6_docs/PatientData/2022-Feb-21/c6_research_patients_2022-02-21_10_20_53.csv",
+        drop_list_file="/home/tyler/Documents/Chr6_docs/PatientData/drop_list.txt",
+        expand_hpos=True
+        )
+    table_dict, selected_hpos, pheno_data, homos = phenotype_homo_test(my_comparison, my_ontology, .85)
