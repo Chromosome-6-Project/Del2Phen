@@ -2,18 +2,19 @@
 """Test Dash App."""
 
 from math import log10
-import pickle
+# import pickle
 
 import dash
 import dash_core_components as dcc
 import dash_html_components as html
 from dash.dependencies import Input, Output
+import plotly.express as px
 import plotly.graph_objects as go
-from plotly.subplots import make_subplots
+# from plotly.subplots import make_subplots
 
 import chr6
 import network
-
+from phenotype_homogeneity import make_phenotype_homogeneity_table
 
 _, _, _, comparison, _, ontology, _ = chr6.test(
     genotypes="/home/tyler/Documents/Chr6_docs/PatientData/2022-Feb-21/c6_array_2022-02-21_18_28_06.csv",
@@ -31,12 +32,13 @@ nx_graph = network.make_nx_graph_from_comparisons(comparison)
 
 
 class DefaultSlider(dcc.Slider):
-    def __init__(self, id):
+    def __init__(self, slider_id):
         super().__init__(
-            id, min=0, max=100, value=0,
+            slider_id, min=0, max=100, value=0,
             marks={str(sim): str(sim) for sim in range(0, 101, 10)},
             tooltip={"placement": "bottom"}
             )
+
 
 app = dash.Dash(__name__)
 
@@ -66,6 +68,7 @@ app.layout = html.Div([
         # Right Pane
         html.Div([
             dcc.Graph(id="homogeneity-graph"),
+            dcc.Graph(id="homogeneity-heatmap"),
             html.Label("Prevalence Level Threshold"),
             dcc.Slider("homogeneity-slider",
                        min=0, max=100, value=20,
@@ -79,29 +82,32 @@ app.layout = html.Div([
                        tooltip={"placement": "bottom"}),
             ], style={"padding": 10, "flex": 1}),
         ], style={"display": "flex", "flex-direction": "row"}),
-])
+    ])
+
 
 @app.callback(Output("homogeneity-graph", "figure"),
+              Output("homogeneity-heatmap", "figure"),
               Input("homogeneity-slider", "value"),
               Input("group-size-slider", "value"),
               Input("length-slider", "value"),
               Input("overlap-slider", "value"),
               Input("gene-slider", "value"),
               Input("hi-slider", "value"))
-def update_homogeneity_figure(homogeneity_threshold, group_size_threshold,
-                              length_threshold, overlap_threshold,
-                              gene_threshold, hi_threshold):
-    _, upper_homogens, lower_homogens = comparison.test_all_homogeneities(
+def update_homogeneity_figures(homogeneity_threshold, group_size_threshold,
+                               length_threshold, overlap_threshold,
+                               gene_threshold, hi_threshold):
+    all_homogens, upper_homogens, lower_homogens = comparison.test_all_homogeneities(
         selected_hpos, length_threshold/100, overlap_threshold/100,
         gene_threshold/100, hi_threshold/100, hpo_similarity=0,
         group_size_threshold=group_size_threshold
         )
-    upper_homogens = [100*homogen.calculate_homogeneity(homogeneity_threshold/100)
+    table = make_phenotype_homogeneity_table(all_homogens, selected_hpos, homogeneity_threshold / 100, 2)
+    upper_homogens = [100*homogen.calculate_homogeneity(homogeneity_threshold/100, 2)
                       for homogen in upper_homogens.values()]
-    lower_homogens = [100*homogen.calculate_homogeneity(homogeneity_threshold/100)
+    lower_homogens = [100*homogen.calculate_homogeneity(homogeneity_threshold/100, 2)
                       for homogen in lower_homogens.values()]
-    fig = go.Figure()
-    fig.add_trace(
+    histogram = go.Figure()
+    histogram.add_trace(
         trace=go.Histogram(
             x=upper_homogens,
             name=f"Group size >= {group_size_threshold}",
@@ -112,7 +118,7 @@ def update_homogeneity_figure(homogeneity_threshold, group_size_threshold,
             hovertemplate="Homogeneity Score: %{x}%<br>Count: %{y}<extra></extra>"
             )
         )
-    fig.add_trace(
+    histogram.add_trace(
         trace=go.Histogram(
             x=lower_homogens,
             name=f"Group size < {group_size_threshold}",
@@ -123,14 +129,16 @@ def update_homogeneity_figure(homogeneity_threshold, group_size_threshold,
             hovertemplate="Homogeneity Score: %{x}%<br>Count: %{y}<extra></extra>"
             )
         )
-    fig.update_layout(
+    histogram.update_layout(
         transition_duration=500,
         title_text="Distribution of Homogeneity Scores",
         xaxis_title_text="Score",
         yaxis_title_text="Count",
         barmode="stack"
         )
-    return fig
+    heatmap = px.imshow(table, aspect="auto")
+    return histogram, heatmap
+
 
 @app.callback(Output("graph-with-slider", "figure"),
               Output("subsize-5-count", "children"),
