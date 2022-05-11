@@ -9,6 +9,8 @@ from collections import namedtuple
 import csv
 from datetime import datetime
 
+from numpy import mean, median
+
 from utilities import (
     merge_range_list,
     overlap,
@@ -221,6 +223,17 @@ class PatientDatabase:
         for cnv in cnvs:
             cnv_dict[cnv.chromosome].append(cnv)
         return cnv_dict
+
+    def get_median_cnv_position(self, chromosome):
+        if chromosome not in self.cnvs:
+            return 0
+        cnv_median = median([(cnv.range.start + cnv.range.stop)/2 for cnv in self.cnvs[chromosome]])
+        cnv_median = int(cnv_median)
+        return cnv_median
+
+    def get_mean_cnv_position(self, chromosome):
+        cnv_mean = mean([(cnv.range.start + cnv.range.stop)/2 for cnv in self.cnvs[chromosome]])
+        return cnv_mean
 
     def add_predictions(self, predictions):
         for patient in self:
