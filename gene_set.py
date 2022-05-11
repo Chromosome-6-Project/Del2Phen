@@ -223,7 +223,7 @@ class Gene:
                 raise ValueError(f">1 {attr} detected from transcripts.")
             self.__setattr__(attr, list(attrs)[0])
         start = min([trans.start for trans in self.transcripts])
-        end = min([trans.end for trans in self.transcripts])
+        end = max([trans.end for trans in self.transcripts])
         self.start = start
         self.end = end
 
@@ -232,10 +232,10 @@ class Gene:
         string += "\t".join([x.transcript_id for x in self.transcripts])
         return hash(string)
 
-    def is_haploinsufficient(self, pLI_threshold=0.9, HI_threshold=10,
-                             loeuf_threshold=.25):
+    def is_haploinsufficient(self, pLI_threshold=0.9, HI_threshold=10):
+                             # loeuf_threshold=.25):
         """Check if gene has sufficient pLI, HI, or LOEUF score."""
-        return is_haploinsufficient(self, pLI_threshold, HI_threshold, loeuf_threshold)
+        return is_haploinsufficient(self, pLI_threshold, HI_threshold)  #, loeuf_threshold)
 
 
 class GeneSet:
