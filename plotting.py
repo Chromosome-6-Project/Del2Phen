@@ -7,9 +7,12 @@
 
 import matplotlib.pyplot as plt
 import numpy as np
+import pandas as pd
 import plotly.graph_objects as go
+import plotly.express as px
 import plotly.io as pio
 
+import network
 from utilities import overlap
 
 pio.renderers.default = "browser"
@@ -158,3 +161,30 @@ def test_plot(hist_info, thing):
                              y=[y[0] for y in thing],
                              mode="markers"))
     fig.show()
+
+
+def plot_phenotype_homogeneity_heatmap(phenohomo_data):
+    fig = px.imshow(phenohomo_data, aspect="auto")
+    fig.show()
+    return
+
+
+def plot_median_degree_vs_hi_similarity(comparison_table):
+    nx_graph = network.make_nx_graph_from_comparisons(comparison_table)
+    degrees = []
+    xs = np.linspace(0, 1, 101)
+    for x in xs:
+        filtered_graph = network.filter_graph_edges(nx_graph, hi_gene_sim_threshold=x)
+        median_degrees = list(network.get_node_degrees(filtered_graph).values())
+        median_degrees = np.median(median_degrees)
+        degrees.append(median_degrees)
+    df = pd.DataFrame({"HI Gene Similarity": xs, "Median Node Degree": degrees})
+    fig = px.line(df, x="HI Gene Similarity", y="Median Node Degree",
+                  title="Median Node Degree vs. HI Similarity")
+    # fig.show()
+    # return
+    return fig
+
+def plot_phenotype_homogeneity_vs_hi_similarity(comparison_table, hi_sim_values):
+
+
