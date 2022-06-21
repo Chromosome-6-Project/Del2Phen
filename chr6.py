@@ -1121,6 +1121,6 @@ if __name__ == "__main__":
         phenotypes="/home/tyler/Documents/Chr6_docs/PatientData/2022-Feb-21/c6_questionnaire_2022-02-21_10_18_09.csv",
         patient_hpo="/home/tyler/Documents/Chr6_docs/PatientData/2022-Feb-21/c6_research_patients_2022-02-21_10_20_53.csv",
         drop_list_file="/home/tyler/Documents/Chr6_docs/PatientData/drop_list.txt",
-        expand_hpos=True
+        expand_hpos=False
         )
     table, selected_hpos, homos = phenotype_homo_test(my_comparison, my_ontology, .85, .2, 2)
