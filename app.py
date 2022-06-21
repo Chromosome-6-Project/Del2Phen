@@ -102,7 +102,7 @@ def update_figure(size_threshold, overlap_threshold, gene_threshold, hi_threshol
         hi_threshold/100
         )
     sizes = network.get_subnet_sizes(filtered_graph)
-    five_count = str(sum((1 for size in sizes if size >= 5)))
+    five_count = network.count_subnets_over_size_n(filtered_graph, 5)
     five_count = f"Clusters with at least 5 individuals: {five_count}"
 
     fig = go.Figure()
@@ -111,10 +111,10 @@ def update_figure(size_threshold, overlap_threshold, gene_threshold, hi_threshol
         xbins=dict(
             start=0,
             end=500,
-            size=2),
+            size=1),
         autobinx=False,
         name="",
-        hovertemplate="Size Range: %{x}<br>Count: %{y}<extra></extra>",
+        hovertemplate="Group Size: %{x}<br>Count: %{y}<extra></extra>",
         ))
 
     fig.update_layout(
