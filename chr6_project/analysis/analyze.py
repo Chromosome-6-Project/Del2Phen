@@ -1,12 +1,8 @@
 
-import importlib.resources as pkg_resources
-
-from pronto import Ontology
-
 from chr6_project.analysis.chr6 import ComparisonTable, DataManager
 from chr6_project.analysis.data_objects import PatientDatabase
 from chr6_project.analysis.gene_set import read_geneset_gtf
-from chr6_project import resources
+import chr6_project.analysis.hpo as c6_hpo
 
 
 def analyze(genotypes, phenotypes, patient_hpo, geneset_gtf, drop_list_file,
@@ -29,9 +25,10 @@ def analyze(genotypes, phenotypes, patient_hpo, geneset_gtf, drop_list_file,
     #     geneset = cPickle.load(infile)
 
     # Read HPO ontology.
-    print("Loading Human Phenotype Ontology...")
-    with pkg_resources.path(resources, "hpo.obo") as ont_file:
-        ontology = Ontology(ont_file)
+    ontology = c6_hpo.make_c6_hpo()
+    # print("Loading Human Phenotype Ontology...")
+    # with pkg_resources.path(resources, "hpo.obo") as ont_file:
+    #     ontology = Ontology(ont_file)
 
     # Read patient genotypes.
     print("Reading patient genotype resources...")
@@ -47,6 +44,7 @@ def analyze(genotypes, phenotypes, patient_hpo, geneset_gtf, drop_list_file,
     print("Reading patient HPO resources...")
     hpos = DataManager.read_data(patient_hpo)
     hpos = DataManager.fix_patient_hpos2(hpos)
+    hpos = DataManager.add_custom_hpos(hpos)
 
     # Build patient objects.
     # !!!: This is where you can choose whether or not to expand HPO terms.
