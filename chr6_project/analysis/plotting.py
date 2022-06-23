@@ -13,8 +13,9 @@ import plotly.express as px
 from plotly.subplots import make_subplots
 import plotly.io as pio
 
-import network
-from utilities import overlap
+from chr6_project.analysis import network
+from chr6_project.analysis.utilities import overlap
+
 
 pio.renderers.default = "browser"
 
