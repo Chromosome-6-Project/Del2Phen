@@ -141,6 +141,27 @@ class DataManager:
             }
         return new_data
 
+    @staticmethod
+    def add_custom_hpos(data):
+        new_data = {}
+        for patient, responses in data.items():
+            neuro = responses["HP:0012758"]
+            if neuro == "F":
+                responses["NEURODEV_NORMAL"] = "T"
+            elif neuro == "T":
+                responses["NEURODEV_NORMAL"] = "F"
+            else:
+                responses["NEURODEV_NORMAL"] = "NA"
+            feed_tube = {responses["HP:0011470"],  responses["HP:0011471"]}
+            if "T" in feed_tube:
+                responses["FEED_TUBE"] = "T"
+            elif feed_tube == {"F"}:
+                responses["FEED_TUBE"] = "F"
+            else:
+                responses["FEED_TUBE"] = "NA"
+            new_data[patient] = responses
+        return new_data
+
     @classmethod
     def fix_genotype_data(cls, data):
         """Apply all data fixes."""
