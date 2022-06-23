@@ -5,24 +5,23 @@
 @author: T.D. Medina
 """
 
-import bz2
 import csv
 from collections import namedtuple
-from math import sqrt
-import pickle
 
 import numpy as np
 import pandas as pd
-from pronto import Ontology, Term
+from pronto import Term
 
-from data_objects import Patient, PatientDatabase, GenomeDict
-import gene_set
-from phenotype_homogeneity import (
+from chr6_project.analysis.data_objects import Patient, PatientDatabase
+from chr6_project.analysis.phenotype_homogeneity import (
     PhenotypeHomogeneity,
     GroupPhenotypeHomogeneity,
-    phenotype_homo_test
     )
-from utilities import jaccard, length_of_range_intersects, merge_range_list
+from chr6_project.analysis.utilities import (
+    jaccard,
+    length_of_range_intersects,
+    merge_range_list
+    )
 
 
 class DataManager:
@@ -679,7 +678,6 @@ class ComparisonTable:
 #         return table
 # =============================================================================
 
-
     def convert_patient_predictions_to_df(self, predictions):
         table = []
         for prediction in sorted(predictions.values(), key=lambda x: x.freq_adjusted, reverse=True):
@@ -1024,85 +1022,6 @@ PredictInfo = namedtuple("PredictionInfo",
                          ["count", "frequency", "TP"])
 
 
-# %% Main
-def main(geno_file, pheno_file):
-    """Run main."""
-    genotypes = DataManager.read_data(geno_file)
-    phenotypes = DataManager.read_data(pheno_file)
-    patients = DataManager.make_patients(genotypes, phenotypes)
-    DataManager.print_summary_counts(patients)
-
-
-def test(genotypes, phenotypes, patient_hpo, drop_list_file, expand_hpos=False):
-    """Test run."""
-    # Read genome dictionary.
-    print("Reading reference genome dictionary...")
-    genomedict = GenomeDict("Data/human_g1k_v37_phiX.dict")
-
-    # Read geneset.
-    print("Loading gene set...")
-    # Build GeneSet from source GTF file (gzipped) (slow, large file):
-    # geneset = GeneSet("C:/Users/Ty/Documents/Chr6/hg19.ensGene.gtf.gz")
-
-    # Build chr6 GeneSet only from source GTF file (gzipped) (slow, large file)
-    # and add pLI and HI info automatically from default sources:
-    geneset = gene_set.main()
-
-    # Or, load pre-made GeneSet from pickle (faster, large file):
-    # with open("GeneSets/hg19.ensGene.pkl", "rb") as infile:
-    #     geneset = pickle.load(infile)
-
-    # Or, load pre-made GeneSet from bz2 pickle (less fast, small file):
-    # with bz2.BZ2File("GeneSets/hg19.ensGene.pkl.bz2", "rb") as infile:
-    #     geneset = cPickle.load(infile)
-
-    # Read HPO ontology.
-    print("Loading Human Phenotype Ontology...")
-    ontology = Ontology("Data/hpo.obo")
-
-    # Read patient genotypes.
-    print("Reading patient genotype data...")
-    genotypes = DataManager.read_data(genotypes)
-    genotypes = DataManager.fix_genotype_data(genotypes)
-    # genotypes = trim_chromosome_names(genotypes)
-
-    # Read patient phenotypes.
-    print("Reading patient phenotype data...")
-    phenotypes = DataManager.read_data(phenotypes)
-
-    # Read patient HPO terms.
-    print("Reading patient HPO data...")
-    hpos = DataManager.read_data(patient_hpo)
-    hpos = DataManager.fix_patient_hpos2(hpos)
-
-    # Build patient objects.
-    # !!!: This is where you can choose whether or not to expand HPO terms.
-    print("Building patient objects...")
-    patients = DataManager.make_patients(genotypes, phenotypes, geneset,
-                                         hpos, ontology, expand_hpos=expand_hpos)
-
-    print("Filtering patients...")
-    drop_list = DataManager.read_patient_drop_list(drop_list_file)
-    patients = DataManager.filter_patients(patients, drop_list)
-
-    patients = PatientDatabase(patients)
-
-    print("Running comparisons...")
-    comparison = ComparisonTable(patients)
-
-    print("Done.")
-    return (
-        genotypes,
-        phenotypes,
-        patients,
-        comparison,
-        geneset,
-        ontology,
-        # hi_genes,
-        genomedict
-        )
-
-
 def predict_test(comparison, patient_list="C:/Users/Ty/Documents/Chr6/Predict_tests/test_patients.txt"):
     with open(patient_list) as infile:
         aafkes_patients = infile.readlines()
@@ -1110,17 +1029,3 @@ def predict_test(comparison, patient_list="C:/Users/Ty/Documents/Chr6/Predict_te
     all_tests = comparison.test_all_phenotype_predictions(gene_similarity=.7)
     aafkes_tests = {x: y for x, y in all_tests.items() if x in aafkes_patients}
     return all_tests, aafkes_tests
-
-
-if __name__ == "__main__":
-    # import sys
-    # main(sys.argv[1], sys.argv[2])
-    # genotypes, phenotypes, patients, geneset = test()
-    _, _, my_patients, my_comparison, my_geneset, my_ontology, my_genomedict = test(
-        genotypes="/home/tyler/Documents/Chr6_docs/PatientData/2022-Feb-21/c6_array_2022-02-21_18_28_06.csv",
-        phenotypes="/home/tyler/Documents/Chr6_docs/PatientData/2022-Feb-21/c6_questionnaire_2022-02-21_10_18_09.csv",
-        patient_hpo="/home/tyler/Documents/Chr6_docs/PatientData/2022-Feb-21/c6_research_patients_2022-02-21_10_20_53.csv",
-        drop_list_file="/home/tyler/Documents/Chr6_docs/PatientData/drop_list.txt",
-        expand_hpos=False
-        )
-    table, selected_hpos, homos = phenotype_homo_test(my_comparison, my_ontology, .85, .2, 2)
