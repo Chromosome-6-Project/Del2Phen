@@ -76,6 +76,17 @@ def write_network_nodes(nodes, out, normalize=True):
         outfile.writelines(writer)
 
 
+def convert_nodes_to_visjs(nodes, normalize=True):
+    new_nodes = []
+    keys = ["id", "label", "group", "color", "value", "title", "hi", "dom", "ranges"]
+    for node in sorted(list(nodes.values()), key=lambda x: x[0]):
+        node = list(node)
+        if normalize:
+            node[4] = log(node[4] + 1, 2)
+        new_nodes.append(dict(zip(keys, node)))
+    return new_nodes
+
+
 def build_network_edges(comparison_table):
     """Build patient-patient edge objects from comparison table."""
     edges = []
@@ -124,6 +135,18 @@ def write_network_edges(edges, out, normalize_width=True):
         writer.append(",".join([str(x) for x in edge]) + "\n")
     with open(out, "w") as outfile:
         outfile.writelines(writer)
+
+
+def convert_edges_to_visjs(edges, normalize_width=True):
+    new_edges = []
+    keys = ["id", "from", "to", "width", "color", "title", "change", "length_sim",
+            "overlap_sim", "gene_sim", "hi_gene_sim"]
+    for edge in edges:
+        edge = list(edge)
+        if normalize_width:
+            edge[3] = max(1, log(edge[3], 2))
+        new_edges.append(dict(zip(keys, edge)))
+    return new_edges
 
 
 def write_network_files(comparison_table, out_dir=None, normalize=True):
