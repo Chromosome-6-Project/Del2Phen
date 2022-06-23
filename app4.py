@@ -12,16 +12,18 @@ import plotly.express as px
 import plotly.graph_objects as go
 # from plotly.subplots import make_subplots
 
-import chr6
-import network
-from phenotype_homogeneity import make_phenotype_homogeneity_table
+from chr6_project.analysis.analyze import analyze
+from chr6_project.analysis import network
+from chr6_project.analysis.phenotype_homogeneity import make_phenotype_homogeneity_table
 
-_, _, _, comparison, _, ontology, _ = chr6.test(
+
+comparison, _, ontology = analyze(
     genotypes="/home/tyler/Documents/Chr6_docs/PatientData/2022-Feb-21/c6_array_2022-02-21_18_28_06.csv",
     phenotypes="/home/tyler/Documents/Chr6_docs/PatientData/2022-Feb-21/c6_questionnaire_2022-02-21_10_18_09.csv",
     patient_hpo="/home/tyler/Documents/Chr6_docs/PatientData/2022-Feb-21/c6_research_patients_2022-02-21_10_20_53.csv",
+    geneset_gtf="/home/tyler/Documents/Chr6_docs/GeneSets/hg19.ensGene.chr6.gtf.gz",
     drop_list_file="/home/tyler/Documents/Chr6_docs/PatientData/drop_list.txt",
-    expand_hpos=True
+    expand_hpos=False
     )
 
 with open("/home/tyler/Documents/Chr6_docs/Phenotype_Homogeneity/selected_phenotypes_hpos.txt") as infile:
