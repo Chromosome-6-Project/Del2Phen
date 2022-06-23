@@ -7,12 +7,14 @@
 
 import gzip
 from collections import namedtuple
+import importlib.resources as pkg_resources
 
 import mygene
 import pandas as pd
 from venn import venn
 
-from utilities import overlap, REFERENCE_CHR
+from chr6_project.analysis.utilities import overlap, REFERENCE_CHR
+from chr6_project import resources
 
 
 # %% Annotation Types
@@ -556,21 +558,20 @@ def is_haploinsufficient(gene, pLI_threshold=0.9, HI_threshold=10,
 
 # %% Main
 def _read_defaults():
-    pli_genes = read_gnomad_pli_data("Data/gnomad.v2.1.1.lof_metrics.by_gene.6.tsv")
-    hi_genes = make_hi_genes("Data/HI_Predictions.v3.chr6.bed")
-    dominant_genes = read_dominant_gene_list("/home/tyler/Documents/Chr6_docs/GeneSets/dominant_genes.txt")
+    pli = list(pkg_resources.path(resources, "gnomad.v2.1.1.lof_metrics.by_gene.6.tsv").gen)[0]
+    hi = list(pkg_resources.path(resources, "HI_Predictions.v3.chr6.bed").gen)[0]
+    dom = list(pkg_resources.path(resources, "dominant_genes.txt").gen)[0]
+    pli_genes = read_gnomad_pli_data(pli)
+    hi_genes = make_hi_genes(hi)
+    dominant_genes = read_dominant_gene_list(dom)
     return pli_genes, hi_genes, dominant_genes
 
 
-def main():
+def read_geneset_gtf(geneset_gtf):
     """Load geneset."""
-    geneset = GeneSet("/home/tyler/Documents/Chr6_docs/GeneSets/hg19.ensGene.chr6.gtf.gz")
+    geneset = GeneSet(geneset_gtf)
     pli_genes, hi_genes, dominant_genes = _read_defaults()
     geneset.add_pLI_scores(pli_genes)
     geneset.add_HI_scores(hi_genes)
     geneset.annotate_dominant_genes(dominant_genes)
     return geneset
-
-
-if __name__ == "__main__":
-    geneset = main()
