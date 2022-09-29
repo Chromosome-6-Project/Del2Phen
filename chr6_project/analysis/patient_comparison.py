@@ -1,21 +1,22 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""The Chromosome 6 Project - Automatic Phenotype Prediction.
+"""The Chromosome 6 Project - Patient Comparisons.
 
 @author: T.D. Medina
 """
 
-import csv
-from collections import namedtuple
-
 import numpy as np
 import pandas as pd
-from pronto import Term
 
-from chr6_project.analysis.data_objects import Patient, PatientDatabase
+from chr6_project.analysis.data_objects import PatientDatabase
 from chr6_project.analysis.phenotype_homogeneity import (
     PhenotypeHomogeneity,
     GroupPhenotypeHomogeneity,
+    )
+from chr6_project.analysis.phenotype_prediction import (
+    TraitPrediction,
+    PatientPredictions,
+    PredictionDatabase
     )
 from chr6_project.analysis.utilities import (
     jaccard,
@@ -24,237 +25,6 @@ from chr6_project.analysis.utilities import (
     )
 
 
-class DataManager:
-    """Collection of Chromosome 6 Project data handling methods."""
-
-    def __init__(self):
-        pass
-
-    @classmethod
-    def read_data(cls, data_file):
-        """Import general CSV data."""
-        data = []
-        with open(data_file, encoding="utf-8") as infile:
-            reader = csv.DictReader(infile, delimiter=",", quotechar='"')
-            for row in reader:
-                for k, v in row.items():
-                    if not v:
-                        row[k] = None
-                    else:
-                        row[k] = v.replace("\n", " ")
-                        row[k] = row[k].replace("\t", "")
-                data.append(row)
-        data = cls.coerce_booleans(data)
-        return data
-
-    @staticmethod
-    def write_table(data, filename):
-        """Write CSV data."""
-        writer = ["\t".join(data[0].keys()) + "\n"]
-        for entry in data:
-            writer.append("\t".join([str(value) for value in entry.values()])
-                          + "\n")
-        with open(filename, "w") as outfile:
-            outfile.writelines(writer)
-
-    @staticmethod
-    def coerce_booleans(data):
-        """Replace True/False and Yes/No strings with bools."""
-        coerced = data
-        for entry in coerced:
-            for k, v in entry.items():
-                if not v:
-                    continue
-                if v.lower() in ["true", "yes"]:
-                    entry[k] = True
-                elif v.lower() in ["false", "no"]:
-                    entry[k] = False
-        return coerced
-
-    @staticmethod
-    def fix_hg19_positions(data):
-        """Fill missing position data, if available, and convert to int."""
-        fixed = data
-        start_report = "Start position in report"
-        start_convert = "Start positie in Hg19"
-        stop_report = "Stop position in report"
-        stop_convert = "Stop positie in Hg19"
-
-        for entry in fixed:
-            build = entry["Human genome build version"]
-            for reported, converted in [(start_report, start_convert),
-                                        (stop_report, stop_convert)]:
-                reported_value = entry[reported]
-                converted_value = entry[converted]
-
-                # Try to fill missing if an hg19 position was already reported.
-                if not converted_value:
-                    # If both positions are missing, skip this record.
-                    if not reported_value:
-                        continue
-                    # If not build hg19, skip this record.
-                    if build != "hg19/NCBI37":
-                        continue
-                    entry[converted] = reported_value
-
-                # Clean up value and convert to integer.
-                try:
-                    new_int = entry[converted].replace(" ", "")
-                    new_int = new_int.replace(",", "")
-                    new_int = int(new_int)
-                    entry[converted] = new_int
-                except ValueError as err:
-                    print(f"Could not parse {err}")
-        return fixed
-
-    @staticmethod
-    def trim_chromosome_names(data):
-        """Remove 'chr' from contig names."""
-        trimmed = data
-        for entry in trimmed:
-            if not entry["Chromosome"]:
-                continue
-            if entry["Chromosome"].lower().startswith("chr"):
-                entry["Chromosome"] = entry["Chromosome"].strip("chrCHR")
-        return trimmed
-
-    @staticmethod
-    def fix_patient_hpos(data):
-        """Change Molgenis-styled HPO terms to OBO HPO terms."""
-        # old_keys = list(data[0].keys())
-        new_data = {}
-        # new_data = {patient["label"]: patient for patient in data}
-        for patient in data:
-            new_patient = dict(patient)
-            for key in patient:
-                new_patient[key.replace("_", ":")] = new_patient.pop(key)
-            new_data[new_patient["label"]] = new_patient
-        return new_data
-
-    @staticmethod
-    def fix_patient_hpos2(data):
-        """Change Molgenis-styled HPO terms to OBO HPO terms."""
-        new_data = {
-            entry["label"]: {x.replace("_", ":"): y
-                             for x, y in list(entry.items())[1:]}
-            for entry in data
-            }
-        return new_data
-
-    @staticmethod
-    def add_custom_hpos(data):
-        new_data = {}
-        for patient, responses in data.items():
-            neuro = responses["HP:0012758"]
-            if neuro == "F":
-                responses["NEURODEV_NORMAL"] = "T"
-            elif neuro == "T":
-                responses["NEURODEV_NORMAL"] = "F"
-            else:
-                responses["NEURODEV_NORMAL"] = "NA"
-            feed_tube = {responses["HP:0011470"],  responses["HP:0011471"]}
-            if "T" in feed_tube:
-                responses["FEED_TUBE"] = "T"
-            elif feed_tube == {"F"}:
-                responses["FEED_TUBE"] = "F"
-            else:
-                responses["FEED_TUBE"] = "NA"
-            new_data[patient] = responses
-        return new_data
-
-    @classmethod
-    def fix_genotype_data(cls, data):
-        """Apply all data fixes."""
-        fixed = cls.trim_chromosome_names(data)
-        fixed = cls.fix_hg19_positions(fixed)
-        return fixed
-
-    @staticmethod
-    def make_patients(genotypes, phenotypes, geneset=None, hpos=None,
-                      ontology=None, expand_hpos=True):
-        """Construct Patient objects from data."""
-        subjects = ({record["subject"] for record in genotypes}
-                    | {record["owner"] for record in phenotypes})
-        patients = {subject: Patient(subject) for subject in subjects}
-        for genotype in genotypes:
-            patients[genotype["subject"]].genotypes.append(genotype)
-        for phenotype in phenotypes:
-            patients[phenotype["owner"]].phenotypes.append(phenotype)
-        if geneset:
-            for patient in patients.values():
-                patient.cnvs = patient.extract_cnvs()
-                patient.identify_gene_overlaps(geneset)
-        if ontology and hpos:
-            for patient in patients.values():
-                if patient.id not in hpos:
-                    continue
-                patient.hpo = {ontology[hpo_id]: response
-                               for hpo_id, response in hpos[patient.id].items()}
-                # patient_hpos = []
-                # for hpo_id, value in hpos[patient.id].items():
-                #     if hpo_id == "label":
-                #         continue
-                #     if value == "T":
-                #         patient_hpos.append(ontology[hpo_id])
-                # patient.hpo = patient_hpos
-                if expand_hpos:
-                    patient.expand_hpo_terms(ontology)
-        for patient in patients.values():
-            if patient.genotypes:
-                patient.origin = patient.genotypes[0]["origin info"]
-            patient.convert_birthday_to_datetime()
-        return patients
-
-    @staticmethod
-    def print_summary_counts(patients):
-        """Print a summary of genotype and phenotype counts."""
-        size = len(patients.values())
-        sums = [(len(patient.genotypes), len(patient.phenotypes))
-                for patient in patients.values()]
-        print(f"Patients: {size}")
-        print("---------------------")
-        print(f"{'Genotypes':13}{'Phenotypes':14}Counts")
-        for geno, pheno in sorted(list(set(sums)), key=lambda x: f"{x[0]}_{x[1]}"):
-            print(f"{geno:<13}{pheno:<14}{sums.count((geno,pheno)):3}")
-
-    @staticmethod
-    def make_ucsc_browser_tracks(patients, out, filter_chrom=None):
-        """Write UCSC BED file of patient CNVs."""
-        writer = ["browser hide all position chr6\n"]
-        patient_list = sorted(
-            [patient for patient in patients.values() if patient.cnvs],
-            key=lambda x: x.cnvs[0].range.start
-            )
-        for i, patient in enumerate(patient_list):
-            patient_writer = [f"track name=Patient_{i} visibility=2\n"
-                              f"#chrom\tchromStart\tchromEnd\tname\n"]
-            for cnv in patient.cnvs:
-                patient_writer.append(
-                    f"chr{cnv.chromosome}\t{cnv.range.start}\t"
-                    f"{cnv.range.stop - 1}\t{str(cnv.change).replace(' ', '')}\n")
-            writer += patient_writer
-        with open(out, "w") as outfile:
-            outfile.writelines(writer)
-
-    @staticmethod
-    def read_patient_drop_list(drop_list_file):
-        with open(drop_list_file) as infile:
-            drop_list = infile.readlines()
-        drop_list = [name.strip() for name in drop_list]
-        drop_list = {name for name in drop_list if not name.startswith("#")}
-        return drop_list
-
-    @staticmethod
-    def filter_patients(patient_dict, drop_list, remove_ungenotyped=True,
-                        remove_unphenotyped=True):
-        patients_filtered = {name: patient for name, patient in patient_dict.items()
-                             if name not in drop_list
-                             and not (remove_ungenotyped and not patient.genotypes)
-                             and not (remove_unphenotyped and not patient.phenotypes)}
-        return patients_filtered
-
-
-# %% Comparisons
 # TODO: Add a method to add a patient.
 class ComparisonTable:
     """Data object holding all patient vs. patient comparisons."""
@@ -357,10 +127,15 @@ class ComparisonTable:
         loci_compare = cls.compare_loci(patient_1, patient_2)
         gene_compare = cls.compare_genes(patient_1, patient_2)
         hi_compare = cls.compare_HI_genes(patient_1, patient_2)
+        dom_compare = cls.compare_dominant_genes(patient_1, patient_2)
+        dom_match = cls.check_dominant_match(patient_1, patient_2)
         hpo_compare = cls.compare_hpos(patient_1, patient_2)
         comparison = PatientIntersect(
             patient_1, patient_2, cnv_type,
-            length_compare, loci_compare, gene_compare, hi_compare, hpo_compare
+            length_compare, loci_compare,
+            gene_compare, hi_compare,
+            dom_compare, dom_match,
+            hpo_compare
             )
         return comparison
 
@@ -413,6 +188,16 @@ class ComparisonTable:
         return jaccard_index, intersect
 
     @staticmethod
+    def compare_dominant_genes(patient_1, patient_2):
+        """Compare affected dominant-effect genes between two patients."""
+        jaccard_index, intersect = jaccard(patient_1.all_dominant_genes(), patient_2.all_dominant_genes())
+        return jaccard_index, intersect
+
+    @staticmethod
+    def check_dominant_match(patient_1, patient_2):
+        return patient_1.all_dominant_genes() == patient_2.all_dominant_genes()
+
+    @staticmethod
     def compare_hpos(patient_1, patient_2):
         """Compare HPO terms between two patients."""
         hpo_set1 = {hpo for hpo, response in patient_1.hpo.items() if response == "T"}
@@ -440,70 +225,96 @@ class ComparisonTable:
         with open(outfile, "w") as out:
             out.writelines(write_me)
 
-    def filter_patient_comparisons(self, patient_id, length_similarity=0,
-                                   loci_similarity=0, gene_similarity=0,
-                                   hi_similarity=0, hpo_similarity=0):
-        patient1 = self.patient_db[patient_id]
-        intersections = self.lookup(patient_id, "all")
-        filtered = []
-        for intersect in intersections:
-            if intersect.patients[0] == intersect.patients[1]:
-                continue
-
-            if patient1 != intersect.patients[0]:
-                patient2 = intersect.patients[0]
-            else:
-                patient2 = intersect.patients[1]
-
-            if not patient2.hpo:
-                continue
-
-            if not all([intersect.length_similarity >= length_similarity,
-                        intersect.loci_similarity >= loci_similarity,
-                        intersect.gene_similarity >= gene_similarity,
-                        intersect.hi_gene_similarity >= hi_similarity,
-                        intersect.hpo_similarity >= hpo_similarity]):
-                continue
-
-            filtered.append(patient2)
-        return filtered
-
-    def filter_patient_intersections(self, patient_id, length_similarity=0,
-                                     loci_similarity=0, gene_similarity=0,
-                                     hi_similarity=0, hpo_similarity=0,
-                                     include_self=False):
-        intersections = {intersect.get_other_id(patient_id): intersect
-                         for intersect in self.lookup(patient_id, "all")
-                         if all([intersect.length_similarity >= length_similarity,
-                                 intersect.loci_similarity >= loci_similarity,
-                                 intersect.gene_similarity >= gene_similarity,
-                                 intersect.hi_gene_similarity >= hi_similarity,
-                                 intersect.hpo_similarity >= hpo_similarity])}
-        if include_self is False and patient_id in intersections:
-            del intersections[patient_id]
-        return intersections
-
-    def make_patient_intersection_group(self, patient_id, length_similarity=0,
-                                        loci_similarity=0, gene_similarity=0,
-                                        hi_similarity=0, hpo_similarity=0,
-                                        include_self=True, as_patient_database=True):
-        intersections = self.filter_patient_intersections(
-            patient_id, length_similarity, loci_similarity, gene_similarity,
-            hi_similarity, hpo_similarity, include_self
-            )
-        patients = [intersection.get_other_patient(patient_id)
-                    for intersection in intersections.values()]
+    def filter_patient_intersects(self, patient_id,
+                                  length_similarity=0, loci_similarity=0,
+                                  gene_similarity=0, hi_gene_similarity=0,
+                                  dom_gene_match=False, hpo_similarity=0,
+                                  include_self=False, as_patient_database=False):
+        intersects = [inter for inter in self.lookup(patient_id, "all") if all(
+            [inter.length_similarity >= length_similarity,
+             inter.loci_similarity >= loci_similarity,
+             inter.gene_similarity >= gene_similarity,
+             inter.hi_gene_similarity >= hi_gene_similarity,
+             inter.dom_gene_match or not dom_gene_match,
+             inter.hpo_similarity >= hpo_similarity,
+             not inter.self_compare or include_self]
+            )]
         if as_patient_database:
-            patients = PatientDatabase({patient.id: patient for patient in patients})
-        return patients
+            patients = [inter.get_other_patient(patient_id) for inter in intersects]
+            patients = {patient.id: patient for patient in patients}
+            patients = PatientDatabase(patients)
+            return patients
+        return intersects
 
-    def test_phenotype_homogeneities(self, patient_id, phenotypes, length_similarity=0,
-                                     loci_similarity=0, gene_similarity=0,
-                                     hi_similarity=0, hpo_similarity=0):
-        group = self.make_patient_intersection_group(
+    # def filter_patient_comparisons(self, patient_id,
+    #                                length_similarity=0, loci_similarity=0,
+    #                                gene_similarity=0, hi_similarity=0,
+    #                                hpo_similarity=0, split_by_dom=False):
+    #     intersections = self.lookup(patient_id, "all")
+    #     filtered = []
+    #     for intersect in intersections:
+    #         if intersect.self_compare:
+    #             continue
+    #         # if intersect.patients[0] == intersect.patients[1]:
+    #         #     continue
+    #         patient2 = intersect.get_other_patient(patient_id)
+    #         # if patient1 != intersect.patients[0]:
+    #         #     patient2 = intersect.patients[0]
+    #         # else:
+    #         #     patient2 = intersect.patients[1]
+    #
+    #         if not patient2.hpo:
+    #             continue
+    #
+    #         if not all([intersect.length_similarity >= length_similarity,
+    #                     intersect.loci_similarity >= loci_similarity,
+    #                     intersect.gene_similarity >= gene_similarity,
+    #                     intersect.hi_gene_similarity >= hi_similarity,
+    #                     (not split_by_dom) or intersect.dom_gene_similarity in {0, 1},
+    #                     intersect.hpo_similarity >= hpo_similarity]):
+    #             continue
+    #
+    #         filtered.append(patient2)
+    #     return filtered
+
+    # def filter_patient_intersections(self, patient_id, length_similarity=0,
+    #                                  loci_similarity=0, gene_similarity=0,
+    #                                  hi_similarity=0, hpo_similarity=0,
+    #                                  include_self=False):
+    #     intersections = {intersect.get_other_id(patient_id): intersect
+    #                      for intersect in self.lookup(patient_id, "all")
+    #                      if all([intersect.length_similarity >= length_similarity,
+    #                              intersect.loci_similarity >= loci_similarity,
+    #                              intersect.gene_similarity >= gene_similarity,
+    #                              intersect.hi_gene_similarity >= hi_similarity,
+    #                              intersect.hpo_similarity >= hpo_similarity])}
+    #     if include_self is False and patient_id in intersections:
+    #         del intersections[patient_id]
+    #     return intersections
+
+    # def make_patient_intersection_group(self, patient_id, length_similarity=0,
+    #                                     loci_similarity=0, gene_similarity=0,
+    #                                     hi_similarity=0, hpo_similarity=0,
+    #                                     include_self=True, as_patient_database=True):
+    #     intersections = self.filter_patient_intersections(
+    #         patient_id, length_similarity, loci_similarity, gene_similarity,
+    #         hi_similarity, hpo_similarity, include_self
+    #         )
+    #     patients = [intersection.get_other_patient(patient_id)
+    #                 for intersection in intersections.values()]
+    #     if as_patient_database:
+    #         patients = PatientDatabase({patient.id: patient for patient in patients})
+    #     return patients
+
+    def test_phenotype_homogeneities(self, patient_id, phenotypes,
+                                     length_similarity=0, loci_similarity=0,
+                                     gene_similarity=0, hi_gene_similarity=0,
+                                     dom_gene_match=False, hpo_similarity=0):
+        group = self.filter_patient_intersects(
             patient_id, length_similarity, loci_similarity,
-            gene_similarity, hi_similarity, hpo_similarity,
-            as_patient_database=True)
+            gene_similarity, hi_gene_similarity, dom_gene_match, hpo_similarity,
+            include_self=True, as_patient_database=True
+            )
         size = group.size
         homogeneities = {
             phenotype: sum([patient.hpo[phenotype] == "T" for patient in group
@@ -578,7 +389,7 @@ class ComparisonTable:
                 response = patient.hpo[hpo].lower()
                 counts[response] += 1
 
-        all_hpo = {hpo: TraitPrediction(hpo, hpo.name, population, *counts.values())
+        all_hpo = {hpo: TraitPrediction(hpo, population, *counts.values())
                    for hpo, counts in all_hpo.items()
                    if counts["group"] == additional_groupname or counts["t"] > 0}
 
@@ -595,139 +406,51 @@ class ComparisonTable:
 
         return all_hpo
 
-# =============================================================================
-#     def test_predictions(self, patient_id, freq_threshold=0,
-#                          length_similarity=0, loci_similarity=0,
-#                          gene_similarity=0, hpo_similarity=0):
-#
-#         comparison_group = self.filter_patient_comparisons(
-#             patient_id,
-#             length_similarity,
-#             loci_similarity,
-#             gene_similarity,
-#             hpo_similarity
-#             )
-#
-#         predictions = self.predict_phenotypes(comparison_group, show=0)
-#         test_hpos = self.patient_db[patient_id].hpo
-#
-#         predicted_hpos = {hpo: PredictInfo(count, freq, hpo in test_hpos)
-#                           for hpo, (count, freq) in predictions.items()
-#                           if freq >= freq_threshold}
-#         true_positives = sum([info.TP for info in predicted_hpos.values()])
-#         # found_hpos = {hpo: (count, freq) for hpo, (count, freq) in predictions.items()
-#         #               if hpo in test_hpos and freq >= freq_threshold}
-#
-#         if not test_hpos:
-#             percent_found = None
-#         else:
-#             percent_found = true_positives / len(test_hpos)
-#
-#         return len(test_hpos), percent_found, len(comparison_group), predicted_hpos
-# =============================================================================
-
-    def test_phenotype_prediction(self, patient_id, freq_threshold=0,
+    def test_phenotype_prediction(self, patient_id,
                                   length_similarity=0, loci_similarity=0,
-                                  gene_similarity=0, hpo_similarity=0):
+                                  gene_similarity=0, hi_gene_similarity=0,
+                                  dom_gene_match=False, hpo_similarity=0,
+                                  skip_no_hpos=True):
+        params = [patient_id, length_similarity, loci_similarity, gene_similarity,
+                  hi_gene_similarity, dom_gene_match, hpo_similarity]
 
         index_hpos = {hpo for hpo, response in self.patient_db[patient_id].hpo.items()
                       if response == "T"}
 
-        comparison_group = self.filter_patient_comparisons(patient_id, length_similarity,
-                                                           loci_similarity, gene_similarity,
-                                                           hpo_similarity)
+        comparison_group = self.filter_patient_intersects(*params, include_self=False,
+                                                          as_patient_database=True)
+        comparison_group = list(comparison_group.patients.values())
+
+        if skip_no_hpos:
+            comparison_group = [patient for patient in comparison_group if patient.hpo]
+
         predictions = self.predict_phenotypes2(comparison_group, show=0,
                                                additional_hpos=index_hpos,
                                                additional_groupname="index")
+        predictions = PatientPredictions(
+            patient=patient_id,
+            patient_group=PatientDatabase({patient.id: patient for patient in comparison_group}),
+            predictions=predictions
+            )
         return predictions
 
-    def test_all_phenotype_predictions(self, filter_unknowns=True, freq_threshold=0,
-                                       length_similarity=0, loci_similarity=0,
-                                       gene_similarity=0, hpo_similarity=0):
-        all_predictions = {}
+    def test_all_phenotype_predictions(self, length_similarity=0, loci_similarity=0,
+                                       gene_similarity=0, hi_gene_similarity=0,
+                                       dom_gene_match=False, hpo_similarity=0,
+                                       skip_no_hpos=True, filter_unknowns=True):
+        params = [length_similarity, loci_similarity, gene_similarity, hi_gene_similarity,
+                  dom_gene_match, hpo_similarity, skip_no_hpos]
 
-        for patient_id in self.index:
-            prediction = self.test_phenotype_prediction(
-                patient_id, freq_threshold, length_similarity, loci_similarity,
-                gene_similarity, hpo_similarity
-                )
-            all_predictions[patient_id] = prediction
+        all_predictions = {patient_id: self.test_phenotype_prediction(patient_id, *params)
+                           for patient_id in self.index}
 
         if filter_unknowns:
             all_predictions = {patient_id: results
                                for patient_id, results in all_predictions.items()
                                if len(results) > 0}
 
+        all_predictions = PredictionDatabase(all_predictions)
         return all_predictions
-
-
-# =============================================================================
-#     def test_all_predictions(self, filter_unknowns=True, freq_threshold=0,
-#                              length_similarity=0, loci_similarity=0,
-#                              gene_similarity=0, hpo_similarity=0):
-#         all_predictions = {patient_id: self.test_predictions(
-#             patient_id,
-#             freq_threshold, length_similarity, loci_similarity,
-#             gene_similarity, hpo_similarity
-#             ) for patient_id in self.index}
-#         if filter_unknowns:
-#             all_predictions = {patient_id: results for patient_id, results in all_predictions.items()
-#                                if results[0] > 0}
-#         return all_predictions
-#
-#     def predictions_as_df(self, patient_id, predictions, threshold=0):
-#         found_count, found_perc, group_size, found_hpos =  predictions[patient_id]
-#         table = []
-#         added = set()
-#
-#         for hpo, info in found_hpos.items():
-#             added.add(hpo)
-#             table.append([hpo.id, hpo.name, info.TP, info.count, info.frequency])
-#
-#         for hpo in self.patient_db[patient_id].hpo:
-#             if hpo in added:
-#                 continue
-#             table.append([hpo.id, hpo.name, True, 0, 0])
-#             # if hpo in found_hpos:
-#             #     table.append([hpo.id, hpo.name, found_hpos[hpo][1] >= threshold,
-#             #                   found_hpos[hpo][0], found_hpos[hpo][1]])
-#             # else:
-#             #     table.append([hpo.id, hpo.name, False, 0, 0])
-#
-#         table.sort(key=lambda line: line[-1], reverse=True)
-#         table = pd.DataFrame(table, columns=["HPO_ID", "HPO_Name", "Known", "Count", "Frequency"])
-#         return table
-# =============================================================================
-
-    def convert_patient_predictions_to_df(self, predictions):
-        table = []
-        for prediction in sorted(predictions.values(), key=lambda x: x.freq_adjusted, reverse=True):
-            table.append(prediction.make_table_row())
-        column_labels = [attr.title()
-                         for attr in list(predictions.values())[0].__dict__.keys()
-                         if not attr.startswith("_")]
-        table = pd.DataFrame(table, columns=column_labels)
-        return table
-
-    # def make_summary_table(self, predictions):
-    #     table = []
-    #     for patient, results in predictions.items():
-    #         known_count, found_perc, group_size, found_hpos = results
-    #         new_hpos = sum([not hpo.TP for hpo in found_hpos.values()])
-    #         # passing = sum([hpo.frequency >= threshold for hpo in found_hpos.values()
-    #         #                if hpo.TP])
-    #         # passing = passing / known_count
-    #         # table.append([patient, known_count, found_perc, passing, group_size])
-    #         table.append([patient, group_size, known_count,
-    #                       found_perc, None,
-    #                       new_hpos, None])
-    #     table = pd.DataFrame(
-    #         sorted(table, key=lambda x: x[0]),
-    #         columns=["ID", "Group_Size", "Known_HPO_Terms",
-    #                  "Known_Found", "Known_Above_Threshold",
-    #                  "New_Found", "New_Above_Threshold"]
-    #         )
-    #     return table
 
     def make_summary_table(self, patient_predictions):
         table = []
@@ -881,6 +604,7 @@ class PatientIntersect:
     def __init__(self, patient_1, patient_2, cnv_type,
                  length_compare, loci_compare,
                  gene_compare, hi_gene_compare,
+                 dom_gene_compare, dom_gene_match,
                  hpo_compare):
         self.patients = {patient_1.id: patient_1, patient_2.id: patient_2}
         self.ids = {patient_1.id, patient_2.id}
@@ -899,6 +623,11 @@ class PatientIntersect:
         self.hi_genes = hi_gene_compare[1]
         self.hi_gene_count = len(hi_gene_compare[1])
 
+        self.dom_gene_similarity = dom_gene_compare[0]
+        self.dom_genes = dom_gene_compare[1]
+        self.dom_gene_count = len(dom_gene_compare[1])
+        self.dom_gene_match = dom_gene_match
+
         self.hpo_similarity = hpo_compare[0]
         self.hpos = hpo_compare[1]
         self.hpo_count = len(hpo_compare[1])
@@ -913,6 +642,8 @@ class PatientIntersect:
                   f"length_similarity={self.length_similarity}, "
                   f"loci_similarity={self.loci_similarity}, "
                   f"gene_similarity={self.gene_similarity}, "
+                  f"hi_gene_similarity={self.hi_gene_similarity}, "
+                  f"dom_gene_similarity={self.dom_gene_similarity}, "
                   f"hpo_similarity={self.hpo_similarity})")
         return string
 
