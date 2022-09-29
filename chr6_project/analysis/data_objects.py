@@ -225,6 +225,10 @@ class PatientDatabase:
             cnv_dict[cnv.chromosome].append(cnv)
         return cnv_dict
 
+    def list_ids(self):
+        id_list = list(self.patients.keys())
+        return id_list
+
     def get_median_cnv_position(self, chromosome):
         if chromosome not in self.cnvs:
             return 0
@@ -380,6 +384,21 @@ class Patient:
             cnvs.append(CNV(chrom, start, stop, change, self.id))
         cnvs = sorted(cnvs, key=lambda x: REFERENCE_CHR.index(x.chromosome))
         return cnvs
+
+    def get_median_cnv_position(self, chromosome):
+        cnvs = [cnv for cnv in self.cnvs if cnv.chromosome == chromosome]
+        if not cnvs:
+            return None
+        cnv_median = median([(cnv.range.start + cnv.range.stop)/2 for cnv in cnvs])
+        cnv_median = int(cnv_median)
+        return cnv_median
+
+    def get_mean_cnv_position(self, chromosome):
+        cnvs = [cnv for cnv in self.cnvs if cnv.chromosome == chromosome]
+        if not cnvs:
+            return None
+        cnv_mean = mean([(cnv.range.start + cnv.range.stop)/2 for cnv in cnvs])
+        return cnv_mean
 
     def get_affected_ranges(self):
         """Get CNV ranges from all CNVs."""
