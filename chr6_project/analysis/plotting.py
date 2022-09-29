@@ -248,11 +248,18 @@ def ph_score_vs_group_size(comparison, phenotypes, hi_scores,
     return fig
 
 
-def ph_score_histograms_by_hi_score(comparison, phenotypes, hi_scores,
-                                    rel_threshold=0.2, abs_threshold=2, min_size=5):
+def patients_per_ph(comparison, phenotypes,
+                    hi_scores=(0.5, 0.6, 0.7, 0.75, 0.8, 0.9),
+                    rel_threshold=0.2, abs_threshold=2, min_size=5,
+                    raw_patient_count=False, add_error=False):
     thresh = (rel_threshold, abs_threshold)
+    count_name = "Fraction"
+    hovertemplate = "PH ≥ %{x}: %{y:.2%} (%{customdata})"
+    if raw_patient_count:
+        count_name = "Number"
+        hovertemplate = "PH ≥ %{x}: %{y} (%{customdata:.2%})"
     fig = go.Figure()
-    for hi_score in sorted(hi_scores, reverse=True):
+    for n, hi_score in enumerate(sorted(hi_scores, reverse=True)):
         _, group_phs, _ = comparison.test_all_homogeneities(
             phenotypes=phenotypes,
             hi_similarity=hi_score,
@@ -262,22 +269,26 @@ def ph_score_histograms_by_hi_score(comparison, phenotypes, hi_scores,
                 for group_ph in group_phs.values()]
         data = [sum([x >= i for x in data]) for i in np.linspace(0, 1, 51)]
         data_len = len(group_phs)
-        perc = [point/data_len for point in data]
+        customdata = [point/data_len for point in data]
+        if not raw_patient_count:
+            data, customdata = customdata, data
         fig.add_trace(go.Scatter(x=np.linspace(0, 1, 51), y=data,
-                                 name=f"HI ≥ {hi_score}", customdata=perc,
-                                 hovertemplate="PH ≥ %{x}: %{y} (%{customdata:.2%})"))
-    fig.update_layout(title=f"Number of Patients with Minimum PH Score,"
+                                 name=f"HI ≥ {hi_score}", customdata=customdata,
+                                 line_color=GA_COLORS[n],
+                                 hovertemplate=hovertemplate))
+    fig.update_layout(title=f"{count_name} of Patients with Minimum PH Score,"
                             f" for groups ≥ {min_size}",
                       xaxis_title="Minimum PH score",
-                      yaxis_title="Number of Patients",
+                      yaxis_title=f"{count_name} of Patients",
                       legend_title="HI Threshold",
                       hovermode="x unified")
     return fig
 
 
-def ph_score_histograms_by_hi_score_w_error(comparison, phenotypes, hi_scores,
-                                            rel_threshold=0.2, abs_threshold=2,
-                                            min_size=5, random_combinations=50):
+def patients_per_ph_w_error(comparison, phenotypes,
+                            hi_scores=(0.5, 0.6, 0.7, 0.75, 0.8, 0.9),
+                            rel_threshold=0.2, abs_threshold=2,
+                            min_size=5, random_combinations=50):
     thresh = (rel_threshold, abs_threshold)
     fig = go.Figure()
     x_axis = np.linspace(0, 1, 51)
@@ -343,13 +354,20 @@ def ph_score_histograms_by_hi_score_w_error(comparison, phenotypes, hi_scores,
     return fig
 
 
-def ph_score_histograms_by_hi_score_by_area(comparison, phenotypes, hi_scores,
-                                            rel_threshold=0.2, abs_threshold=2, min_size=5):
+def patients_per_ph_by_area(comparison, phenotypes,
+                            hi_scores=(0.5, 0.6, 0.7, 0.75, 0.8, 0.9),
+                            rel_threshold=0.2, abs_threshold=2, min_size=5,
+                            raw_patient_count=False):
     thresh = (rel_threshold, abs_threshold)
+    count_name = "Fraction"
+    hovertemplate = "PH ≥ %{x}: %{y:.2%} (%{customdata})"
+    if raw_patient_count:
+        hovertemplate = "PH ≥ %{x}: %{y} (%{customdata:.2%})"
+        count_name = "Number"
     divider = 57038355
     fig = make_subplots(1, 3)
 
-    for hi_score in sorted(hi_scores, reverse=True):
+    for n, hi_score in enumerate(sorted(hi_scores, reverse=True)):
         _, group_phs, _ = comparison.test_all_homogeneities(
             phenotypes=phenotypes,
             hi_similarity=hi_score,
@@ -364,19 +382,47 @@ def ph_score_histograms_by_hi_score_by_area(comparison, phenotypes, hi_scores,
 
         for sub, data in enumerate(region_data, start=1):
             data = [group_ph.calculate_homogeneity(*thresh) for group_ph in data]
-            data = [sum([x >= i for x in data]) for i in np.linspace(0, 1, 51)]
             data_len = len(data)
+            data = [sum([x >= i for x in data]) for i in np.linspace(0, 1, 51)]
             perc = [point/data_len for point in data]
+
+            if not raw_patient_count:
+                data, perc = perc, data
             fig.add_trace(go.Scatter(x=np.linspace(0, 1, 51), y=data,
                                      name=f"HI ≥ {hi_score}", customdata=perc,
-                                     hovertemplate="PH ≥ %{x}: %{y} (%{customdata:.2%})",
-                                     legendgroup=f"{hi_score}"),
+                                     hovertemplate=hovertemplate,
+                                     legendgroup=f"{hi_score}",
+                                     showlegend=(not bool(sub-1)),
+                                     line_color=GA_COLORS[n]),
                           row=1, col=sub)
 
-    fig.update_layout(title=f"Number of Patients with Minimum PH Score,"
+    fig.update_layout(title=f"{count_name} of Patients with Minimum PH Score,"
                             f" for groups ≥ {min_size}",
                       xaxis_title="Minimum PH score",
-                      yaxis_title="Number of Patients",
+                      yaxis_title=f"{count_name} of Patients",
                       legend_title="HI Threshold",
                       hovermode="x unified")
+    fig.update_traces()
+    return fig
+
+
+def plot_precision_stats(prediction_database, patient_database, phenotypes=None,
+                         abs_threshold=2, rel_threshold=0.2, group_size_threshold=4):
+    params = (phenotypes, abs_threshold, rel_threshold, group_size_threshold)
+    prediction_stats = prediction_database.calculate_individual_precision(*params)
+    positions = [patient_database[patient].get_median_cnv_position("6")
+                 for patient in prediction_stats]
+    sizes = [prediction_database.predictions[patient].patient_group.size
+             for patient in prediction_stats]
+    prediction_stats = pd.DataFrame.from_dict(prediction_stats, orient="index")
+    prediction_stats["Position"] = positions
+    prediction_stats["Size"] = sizes
+    prediction_stats = prediction_stats.sort_values("Position")
+    fig = go.Figure()
+    for stat in prediction_stats.columns[:-2]:
+        fig.add_trace(go.Scatter(x=prediction_stats["Position"],
+                                 y=prediction_stats[stat],
+                                 name=stat,
+                                 mode="markers",
+                                 marker=dict(size=prediction_stats["Size"])))
     return fig
