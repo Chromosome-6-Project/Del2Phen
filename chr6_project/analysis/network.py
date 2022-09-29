@@ -21,7 +21,7 @@ pio.renderers.default = "browser"
 Node = namedtuple("Node", ["id", "label", "group", "color",
                            "value", "title", "hi_genes", "dom_genes", "ranges"])
 Edge = namedtuple("Edge", ["edge_id", "id1", "id2", "width", "color", "title", "change",
-                           "length_sim", "overlap_sim", "gene_sim", "hi_sim"])
+                           "length_sim", "overlap_sim", "gene_sim", "hi_sim", "dom_match"])
 
 
 def build_network_nodes(comparison_table):
@@ -113,15 +113,19 @@ def build_network_edges(comparison_table):
         hi_gene_count = intersect.hi_gene_count
         hi_gene_sim = intersect.hi_gene_similarity
 
+        dom_gene_count = intersect.dom_gene_count
+        dom_gene_match = intersect.dom_gene_match
+
         color = "gray"
         title = (f"<p>{id1}---{id2}:<br>"
                  f"Change: {change}<br>"
                  f"Overlap: {overlap} ({overlap_sim:.2%})<br>"
                  f"Shared genes: {gene_count} ({gene_sim:.2%})<br>"
                  f"Shared HI genes: {hi_gene_count} ({hi_gene_sim:.2%})<br>"
+                 f"Shared Dominant-Effect genes: {dom_gene_count} (Matched: {dom_gene_match})<br>"
                  f"Shared HPO terms: {hpo_count} ({hpo_sim:.2%})<br></p>")
         edges.append(Edge(edge_id, id1, id2, overlap_sim*100, color, title, change,
-                          length_sim, overlap_sim, gene_sim, hi_gene_sim))
+                          length_sim, overlap_sim, gene_sim, hi_gene_sim, dom_gene_match))
     return edges
 
 
@@ -140,7 +144,7 @@ def write_network_edges(edges, out, normalize_width=True):
 def convert_edges_to_visjs(edges, normalize_width=True):
     new_edges = []
     keys = ["id", "from", "to", "width", "color", "title", "change", "length_sim",
-            "overlap_sim", "gene_sim", "hi_gene_sim"]
+            "overlap_sim", "gene_sim", "hi_gene_sim", "dom_gene_sim"]
     for edge in edges:
         edge = list(edge)
         if normalize_width:
@@ -201,13 +205,15 @@ def make_nx_graph_from_comparisons(comparison_table):
 
 
 def filter_graph_edges(graph, length_sim_threshold=0, overlap_sim_threshold=0,
-                       gene_sim_threshold=0, hi_gene_sim_threshold=0):
+                       gene_sim_threshold=0, hi_gene_sim_threshold=0,
+                       dom_gene_match=False):
     edges = list(graph.edges.items())
     edges = [(edge[0][0], edge[0][1], edge[1]) for edge in edges
-             if edge[1]["length_sim"] >= length_sim_threshold
-             and edge[1]["overlap_sim"] >= overlap_sim_threshold
-             and edge[1]["gene_sim"] >= gene_sim_threshold
-             and edge[1]["hi_sim"] >= hi_gene_sim_threshold]
+             if all([edge[1]["length_sim"] >= length_sim_threshold,
+                    edge[1]["overlap_sim"] >= overlap_sim_threshold,
+                    edge[1]["gene_sim"] >= gene_sim_threshold,
+                    edge[1]["hi_sim"] >= hi_gene_sim_threshold,
+                    ((not dom_gene_match) or edge[1]["dom_match"] in {0, 1})])]
     filtered_graph = nx.Graph()
     filtered_graph.add_nodes_from(graph.nodes)
     filtered_graph.add_edges_from(edges)
