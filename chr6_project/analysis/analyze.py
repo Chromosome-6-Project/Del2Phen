@@ -1,12 +1,238 @@
+"""The Chromosome 6 Project - Main Analysis Methods.
 
-from chr6_project.analysis.chr6 import ComparisonTable, DataManager
-from chr6_project.analysis.data_objects import PatientDatabase
+@author: T.D. Medina
+"""
+
+import csv
+
+from chr6_project.analysis.patient_comparison import ComparisonTable
+from chr6_project.analysis.data_objects import PatientDatabase, Patient
 from chr6_project.analysis.gene_set import read_geneset_gtf
 import chr6_project.analysis.hpo as c6_hpo
 
 
+class DataManager:
+    """Collection of Chromosome 6 Project data handling methods."""
+
+    def __init__(self):
+        pass
+
+    @classmethod
+    def read_data(cls, data_file):
+        """Import general CSV data."""
+        data = []
+        with open(data_file, encoding="utf-8") as infile:
+            reader = csv.DictReader(infile, delimiter=",", quotechar='"')
+            for row in reader:
+                for k, v in row.items():
+                    if not v:
+                        row[k] = None
+                    else:
+                        row[k] = v.replace("\n", " ")
+                        row[k] = row[k].replace("\t", "")
+                data.append(row)
+        data = cls.coerce_booleans(data)
+        return data
+
+    @staticmethod
+    def write_table(data, filename):
+        """Write CSV data."""
+        writer = ["\t".join(data[0].keys()) + "\n"]
+        for entry in data:
+            writer.append("\t".join([str(value) for value in entry.values()])
+                          + "\n")
+        with open(filename, "w") as outfile:
+            outfile.writelines(writer)
+
+    @staticmethod
+    def coerce_booleans(data):
+        """Replace True/False and Yes/No strings with bools."""
+        coerced = data
+        for entry in coerced:
+            for k, v in entry.items():
+                if not v:
+                    continue
+                if v.lower() in ["true", "yes"]:
+                    entry[k] = True
+                elif v.lower() in ["false", "no"]:
+                    entry[k] = False
+        return coerced
+
+    @staticmethod
+    def fix_hg19_positions(data):
+        """Fill missing position data, if available, and convert to int."""
+        fixed = data
+        start_report = "Start position in report"
+        start_convert = "Start positie in Hg19"
+        stop_report = "Stop position in report"
+        stop_convert = "Stop positie in Hg19"
+
+        for entry in fixed:
+            build = entry["Human genome build version"]
+            for reported, converted in [(start_report, start_convert),
+                                        (stop_report, stop_convert)]:
+                reported_value = entry[reported]
+                converted_value = entry[converted]
+
+                # Try to fill missing if an hg19 position was already reported.
+                if not converted_value:
+                    # If both positions are missing, skip this record.
+                    if not reported_value:
+                        continue
+                    # If not build hg19, skip this record.
+                    if build != "hg19/NCBI37":
+                        continue
+                    entry[converted] = reported_value
+
+                # Clean up value and convert to integer.
+                try:
+                    new_int = entry[converted].replace(" ", "")
+                    new_int = new_int.replace(",", "")
+                    new_int = int(new_int)
+                    entry[converted] = new_int
+                except ValueError as err:
+                    print(f"Could not parse {err}")
+        return fixed
+
+    @staticmethod
+    def trim_chromosome_names(data):
+        """Remove 'chr' from contig names."""
+        trimmed = data
+        for entry in trimmed:
+            if not entry["Chromosome"]:
+                continue
+            if entry["Chromosome"].lower().startswith("chr"):
+                entry["Chromosome"] = entry["Chromosome"].strip("chrCHR")
+        return trimmed
+
+    @staticmethod
+    def fix_patient_hpos(data):
+        """Change Molgenis-styled HPO terms to OBO HPO terms."""
+        new_data = {
+            entry["label"]: {x.replace("_", ":"): y
+                             for x, y in list(entry.items())[1:]}
+            for entry in data
+            }
+        return new_data
+
+    @staticmethod
+    def add_custom_hpos(data):
+        new_data = {}
+        for patient, responses in data.items():
+            neuro = responses["HP:0012758"]
+            if neuro == "F":
+                responses["NEURODEV_NORMAL"] = "T"
+            elif neuro == "T":
+                responses["NEURODEV_NORMAL"] = "F"
+            else:
+                responses["NEURODEV_NORMAL"] = "NA"
+            feed_tube = {responses["HP:0011470"],  responses["HP:0011471"]}
+            if "T" in feed_tube:
+                responses["FEED_TUBE"] = "T"
+            elif feed_tube == {"F"}:
+                responses["FEED_TUBE"] = "F"
+            else:
+                responses["FEED_TUBE"] = "NA"
+            new_data[patient] = responses
+        return new_data
+
+    @classmethod
+    def fix_genotype_data(cls, data):
+        """Apply all data fixes."""
+        fixed = cls.trim_chromosome_names(data)
+        fixed = cls.fix_hg19_positions(fixed)
+        return fixed
+
+    @staticmethod
+    def make_patients(genotypes, phenotypes, geneset=None, hpos=None,
+                      ontology=None, expand_hpos=True):
+        """Construct Patient objects from data."""
+        subjects = ({record["subject"] for record in genotypes}
+                    | {record["owner"] for record in phenotypes})
+        patients = {subject: Patient(subject) for subject in subjects}
+        for genotype in genotypes:
+            patients[genotype["subject"]].genotypes.append(genotype)
+        for phenotype in phenotypes:
+            patients[phenotype["owner"]].phenotypes.append(phenotype)
+        if geneset:
+            for patient in patients.values():
+                patient.cnvs = patient.extract_cnvs()
+                patient.identify_gene_overlaps(geneset)
+        if ontology and hpos:
+            for patient in patients.values():
+                if patient.id not in hpos:
+                    continue
+                patient.hpo = hpos[patient.id]
+                # patient.hpo = {ontology[hpo_id]: response
+                #                for hpo_id, response in hpos[patient.id].items()}
+
+                # patient_hpos = []
+                # for hpo_id, value in hpos[patient.id].items():
+                #     if hpo_id == "label":
+                #         continue
+                #     if value == "T":
+                #         patient_hpos.append(ontology[hpo_id])
+                # patient.hpo = patient_hpos
+
+                # if expand_hpos:
+                #     patient.expand_hpo_terms(ontology)
+        for patient in patients.values():
+            if patient.genotypes:
+                patient.origin = patient.genotypes[0]["origin info"]
+            patient.convert_birthday_to_datetime()
+        return patients
+
+    @staticmethod
+    def print_summary_counts(patients):
+        """Print a summary of genotype and phenotype counts."""
+        size = len(patients.values())
+        sums = [(len(patient.genotypes), len(patient.phenotypes))
+                for patient in patients.values()]
+        print(f"Patients: {size}")
+        print("---------------------")
+        print(f"{'Genotypes':13}{'Phenotypes':14}Counts")
+        for geno, pheno in sorted(list(set(sums)), key=lambda x: f"{x[0]}_{x[1]}"):
+            print(f"{geno:<13}{pheno:<14}{sums.count((geno,pheno)):3}")
+
+    @staticmethod
+    def make_ucsc_browser_tracks(patients, out, filter_chrom=None):
+        """Write UCSC BED file of patient CNVs."""
+        writer = ["browser hide all position chr6\n"]
+        patient_list = sorted(
+            [patient for patient in patients.values() if patient.cnvs],
+            key=lambda x: x.cnvs[0].range.start
+            )
+        for i, patient in enumerate(patient_list):
+            patient_writer = [f"track name=Patient_{i} visibility=2\n"
+                              f"#chrom\tchromStart\tchromEnd\tname\n"]
+            for cnv in patient.cnvs:
+                patient_writer.append(
+                    f"chr{cnv.chromosome}\t{cnv.range.start}\t"
+                    f"{cnv.range.stop - 1}\t{str(cnv.change).replace(' ', '')}\n")
+            writer += patient_writer
+        with open(out, "w") as outfile:
+            outfile.writelines(writer)
+
+    @staticmethod
+    def read_patient_drop_list(drop_list_file):
+        with open(drop_list_file) as infile:
+            drop_list = infile.readlines()
+        drop_list = [name.strip() for name in drop_list]
+        drop_list = {name for name in drop_list if not name.startswith("#")}
+        return drop_list
+
+    @staticmethod
+    def filter_patients(patient_dict, drop_list, remove_ungenotyped=True,
+                        remove_unphenotyped=True):
+        patients_filtered = {name: patient for name, patient in patient_dict.items()
+                             if name not in drop_list
+                             and not (remove_ungenotyped and not patient.genotypes)
+                             and not (remove_unphenotyped and not patient.phenotypes)}
+        return patients_filtered
+
+
 def analyze(genotypes, phenotypes, patient_hpo, geneset_gtf, drop_list_file,
-            expand_hpos=False):
+            hpo_termset_yaml=None, expand_hpos=False):
     # Read geneset.
     print("Loading gene set...")
     # Build GeneSet from source GTF file (gzipped) (slow, large file):
@@ -25,10 +251,8 @@ def analyze(genotypes, phenotypes, patient_hpo, geneset_gtf, drop_list_file,
     #     geneset = cPickle.load(infile)
 
     # Read HPO ontology.
-    ontology = c6_hpo.make_c6_hpo()
     # print("Loading Human Phenotype Ontology...")
-    # with pkg_resources.path(resources, "hpo.obo") as ont_file:
-    #     ontology = Ontology(ont_file)
+    # ontology = c6_hpo.make_c6_hpo()
 
     # Read patient genotypes.
     print("Reading patient genotype resources...")
@@ -41,16 +265,18 @@ def analyze(genotypes, phenotypes, patient_hpo, geneset_gtf, drop_list_file,
     phenotypes = DataManager.read_data(phenotypes)
 
     # Read patient HPO terms.
-    print("Reading patient HPO resources...")
-    hpos = DataManager.read_data(patient_hpo)
-    hpos = DataManager.fix_patient_hpos2(hpos)
-    hpos = DataManager.add_custom_hpos(hpos)
+    print("Loading patient HPO resources...")
+    ontology, hpos, termset = c6_hpo.make_c6_hpo(patient_hpo, hpo_termset_yaml,
+                                                 expand_hpos)
+    # hpos = DataManager.read_data(patient_hpo)
+    # hpos = DataManager.fix_patient_hpos(hpos)
+    # hpos = DataManager.add_custom_hpos(hpos)
 
     # Build patient objects.
-    # !!!: This is where you can choose whether or not to expand HPO terms.
+    # !!!: This is where you can choose whether to expand HPO terms.
     print("Building patient objects...")
     patients = DataManager.make_patients(genotypes, phenotypes, geneset,
-                                         hpos, ontology, expand_hpos=expand_hpos)
+                                         hpos, ontology)
 
     print("Filtering patients...")
     drop_list = DataManager.read_patient_drop_list(drop_list_file)
@@ -69,6 +295,7 @@ def analyze(genotypes, phenotypes, patient_hpo, geneset_gtf, drop_list_file,
         comparison,
         geneset,
         ontology,
+        termset,
         # hi_genes,
         # genomedict
         )
