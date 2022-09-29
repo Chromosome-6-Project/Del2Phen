@@ -401,10 +401,10 @@ class Patient:
         all_genes = {gene for cnv in self.cnvs for gene in cnv.genes}
         return all_genes
 
-    def all_HI_genes(self, pLI_threshold=0.9, HI_threshold=10):
+    def all_HI_genes(self, pLI_threshold=0.9, HI_threshold=10, phaplo_threshold=.86):
         """Get all haploinsufficient genes affected by all CNVs."""
         hi_genes = {gene for cnv in self.cnvs for gene in cnv.genes
-                    if is_haploinsufficient(gene, pLI_threshold, HI_threshold)}
+                    if is_haploinsufficient(gene, pLI_threshold, HI_threshold, phaplo_threshold)}
         return hi_genes
 
     def all_dominant_genes(self):
