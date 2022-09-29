@@ -106,16 +106,25 @@ def make_phenotype_homogeneity_table(group_homogeneities, selected_hpos, homogen
     return table
 
 
-def phenotype_homo_test(comparison, ontology, hi_similarity, homogeneity_threshold, abs_threshold, phenotypes=None):
-    if phenotypes is None:
-        with open("/home/tyler/Documents/Chr6_docs/Phenotype_Homogeneity/selected_phenotypes_hpos.txt") as infile:
-            selected_hpos = infile.readlines()
-        selected_hpos = [ontology[x.strip().split("\t")[1]] for x in selected_hpos]
-    else:
-        selected_hpos = phenotypes
-    homos = comparison.test_all_homogeneities(selected_hpos, hi_similarity=hi_similarity)[0]
-    table = make_phenotype_homogeneity_table(homos, selected_hpos, homogeneity_threshold, abs_threshold)
-    return table, selected_hpos, homos
+def phenotype_homo_test(comparison, selected_hpos,
+                        length_similarity, loci_similarity, gene_similarity,
+                        hi_similarity, hpo_similarity, group_size_threshold,
+                        homogeneity_threshold, abs_threshold):
+    # if phenotypes is None:
+    #     with open("/home/tyler/Documents/Chr6_docs/Phenotype_Homogeneity/selected_phenotypes_hpos.txt") as infile:
+    #         selected_hpos = infile.readlines()
+    #     selected_hpos = [ontology[x.strip().split("\t")[1]] for x in selected_hpos]
+    # else:
+    #     selected_hpos = phenotypes
+    homos = comparison.test_all_homogeneities(
+        phenotypes=selected_hpos,
+        length_similarity=length_similarity,
+        loci_similarity=loci_similarity, gene_similarity=gene_similarity,
+        hi_similarity=hi_similarity, hpo_similarity=hpo_similarity,
+        group_size_threshold=group_size_threshold
+        )
+    table = make_phenotype_homogeneity_table(homos[0], selected_hpos, homogeneity_threshold, abs_threshold)
+    return table, homos
 
 
 def plot_phenotype_homogeneities(comparison, selected_hpos, hi_similarity, abs_threshold):
