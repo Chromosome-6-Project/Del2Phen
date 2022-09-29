@@ -202,6 +202,7 @@ class Gene:
         self.hi_score = None
         self.pli_score = None
         self.loeuf_score = None
+        self.phaplo_score = None
 
         self.dominant = False
 
@@ -234,10 +235,11 @@ class Gene:
         string += "\t".join([x.transcript_id for x in self.transcripts])
         return hash(string)
 
-    def is_haploinsufficient(self, pLI_threshold=0.9, HI_threshold=10):
+    def is_haploinsufficient(self, pLI_threshold=0.9, HI_threshold=10,
+                             phaplo_threshold=0.86):
                              # loeuf_threshold=.25):
         """Check if gene has sufficient pLI, HI, or LOEUF score."""
-        return is_haploinsufficient(self, pLI_threshold, HI_threshold)  #, loeuf_threshold)
+        return is_haploinsufficient(self, pLI_threshold, HI_threshold, phaplo_threshold)  #, loeuf_threshold)
 
 
 class GeneSet:
@@ -367,6 +369,12 @@ class GeneSet:
             if gene in self.genes:
                 self.genes[gene].hi_score = info.HI_score
 
+    def add_phaplo_scores(self, phaplo_data):
+        """Add pHaplo scores to genes."""
+        for gene, score in phaplo_data.items():
+            if gene in self.genes:
+                self.genes[gene].phaplo_score = score
+
     def annotate_dominant_genes(self, gene_list):
         for gene in gene_list:
             if gene in self.genes:
@@ -377,14 +385,17 @@ class GeneSet:
         return set(self.genes.keys())
 
     def plot_haploinsufficient_venn(self, chromosome, pLI_threshold=0.9,
-                                     HI_threshold=10, loeuf_threshold=.25):
+                                    HI_threshold=10, loeuf_threshold=.25,
+                                    phaplo_threshold=0.86):
         venn_dict = {
-            "HI": {gene for gene in self.chromosomes[chromosome].values()
+            "HI": {gene.gene_id for gene in self.chromosomes[chromosome].values()
                    if gene.hi_score is not None and gene.hi_score <= HI_threshold},
-            "pLI": {gene for gene in self.chromosomes[chromosome].values()
+            "pLI": {gene.gene_id for gene in self.chromosomes[chromosome].values()
                     if gene.pli_score is not None and gene.pli_score >= pLI_threshold},
-            "LOEUF": {gene for gene in self.chromosomes[chromosome].values()
-                      if gene.loeuf_score is not None and gene.loeuf_score <= loeuf_threshold}
+            # "LOEUF": {gene.gene_id for gene in self.chromosomes[chromosome].values()
+            #           if gene.loeuf_score is not None and gene.loeuf_score <= loeuf_threshold},
+            "pHaplo": {gene.gene_id for gene in self.chromosomes[chromosome].values()
+                       if gene.phaplo_score is not None and gene.phaplo_score >= phaplo_threshold}
             }
         venn(venn_dict)
 
@@ -437,6 +448,16 @@ def read_HI_gene_data(file, HI_max=100):
             for x in data]
     data = {x[0]: HI_info(*x) for x in data}
     data = {x: y for x, y in data.items() if y.HI_score < HI_max}
+    return data
+
+
+def read_phaplo_gene_data(file):
+    """Read pHaplo gene information file."""
+    with open(file) as infile:
+        infile.readline()
+        data = infile.readlines()
+    data = [x.strip().split("\t") for x in data]
+    data = {x[0]: float(x[1]) for x in data}
     return data
 
 
@@ -545,33 +566,37 @@ def symbol_relookup_missing(mygene_lookup, mygene_instance):
 
 # %% Helper Functions
 def is_haploinsufficient(gene, pLI_threshold=0.9, HI_threshold=10,
-                         loeuf_threshold=.25, mode="any"):
+                         phaplo_threshold=0.86, mode="any"):
     """Check if gene has sufficiently low pLI or HI score."""
     pli_pass = gene.pli_score is not None and gene.pli_score >= pLI_threshold
     hi_pass = gene.hi_score is not None and gene.hi_score <= HI_threshold
-    loeuf_pass = gene.loeuf_score is not None and gene.loeuf_score <= loeuf_threshold
+    # loeuf_pass = gene.loeuf_score is not None and gene.loeuf_score <= loeuf_threshold
+    phaplo_pass = gene.phaplo_score is not None and gene.phaplo_score >= phaplo_threshold
     if mode == "all":
-        return all([hi_pass, pli_pass, loeuf_pass])
+        return all([hi_pass, pli_pass, phaplo_pass])
     else:
-        return any([hi_pass, pli_pass, loeuf_pass])
+        return any([hi_pass, pli_pass, phaplo_pass])
 
 
 # %% Main
 def _read_defaults():
     pli = list(pkg_resources.path(resources, "gnomad.v2.1.1.lof_metrics.by_gene.6.tsv").gen)[0]
     hi = list(pkg_resources.path(resources, "HI_Predictions.v3.chr6.bed").gen)[0]
+    phaplo = list(pkg_resources.path(resources, "phaplo_scores.chr6.tsv").gen)[0]
     dom = list(pkg_resources.path(resources, "dominant_genes.txt").gen)[0]
     pli_genes = read_gnomad_pli_data(pli)
+    phaplo_genes = read_phaplo_gene_data(phaplo)
     hi_genes = make_hi_genes(hi)
     dominant_genes = read_dominant_gene_list(dom)
-    return pli_genes, hi_genes, dominant_genes
+    return pli_genes, hi_genes, phaplo_genes, dominant_genes
 
 
 def read_geneset_gtf(geneset_gtf):
     """Load geneset."""
     geneset = GeneSet(geneset_gtf)
-    pli_genes, hi_genes, dominant_genes = _read_defaults()
+    pli_genes, hi_genes, phaplo_genes, dominant_genes = _read_defaults()
     geneset.add_pLI_scores(pli_genes)
     geneset.add_HI_scores(hi_genes)
+    geneset.add_phaplo_scores(phaplo_genes)
     geneset.annotate_dominant_genes(dominant_genes)
     return geneset
