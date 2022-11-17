@@ -189,6 +189,27 @@ def plot_phenotype_homogeneity_heatmap(phenohomo_data):
     return
 
 
+# %% Group Size Plots
+def node_degree_histogram(comparison_table, hi_sim=0.75):
+    nx_graph = network.make_nx_graph_from_comparisons(comparison_table)
+    nx_graph = network.filter_graph_edges(nx_graph, hi_gene_similarity=hi_sim)
+    degrees = sorted(network.get_node_degrees(nx_graph).values())
+    fig = go.Figure()
+    fig.add_trace(
+        go.Histogram(x=degrees,
+                     xbins=dict(start=0, end=500, size=1),
+                     autobinx=False,
+                     hovertemplate="Connections: %{x}<br>Patients: %{y}<extra></extra>")
+        )
+    fig.update_layout(title=("Histogram of Patient Connection Counts, "
+                             f"at {hi_sim:.2%} HI Similarity"),
+                      xaxis_title="Number of Connections",
+                      yaxis_title=f"Number of Patients",
+                      legend_title="HI Similarity",
+                      hovermode="x unified")
+    return fig
+
+
 def plot_median_degree_vs_hi_similarity(comparison_table):
     nx_graph = network.make_nx_graph_from_comparisons(comparison_table)
     degrees = []
@@ -205,16 +226,16 @@ def plot_median_degree_vs_hi_similarity(comparison_table):
     # return
     return fig
 
-# def plot_phenotype_homogeneity_vs_hi_similarity(comparison_table, hi_sim_values):
 
-
-def plot_min_degree_count_vs_hi_score(comparison, hi_scores, min_degrees):
+def plot_min_degree_count_vs_hi_score(comparison, hi_scores, min_degrees,
+                                      dom_gene_match=True):
     fig = go.Figure()
     for min_degree in min_degrees:
         graph = network.make_nx_graph_from_comparisons(comparison)
         points = []
         for hi_score in hi_scores:
-            filtered = network.filter_graph_edges(graph, hi_gene_sim_threshold=hi_score)
+            filtered = network.filter_graph_edges(graph, hi_gene_similarity=hi_score,
+                                                  dom_gene_match=dom_gene_match)
             degree_count = network.count_nodes_over_n_degree(filtered, min_degree)
             points.append(degree_count)
         fig.add_trace(go.Scatter(x=hi_scores, y=points, name=f"n ≥ {min_degree}"))
@@ -226,30 +247,52 @@ def plot_min_degree_count_vs_hi_score(comparison, hi_scores, min_degrees):
     return fig
 
 
-def ph_score_vs_group_size(comparison, phenotypes, hi_scores,
+# def plot_min_degree_count_vs_genetic_similarity(comparison, min_degrees,
+#                                                 genetic_similarities):
+#     fig = go.Figure()
+#     for min_degree in min_degrees:
+#         graph = network.make_nx_graph_from_comparisons(comparison)
+#         points = []
+#         for gen_sim in genetic_similarities:
+#             filtered = network.filter_graph_edges(graph, gen_sim)
+#             degree_count = network.count_nodes_over_n_degree(filtered, min_degree)
+#             points.append(degree_count)
+#         fig.add_trace(go.Scatter(x=hi_scores, y=points, name=f"n ≥ {min_degree}"))
+#     fig.update_layout(title="Number of patients with minimum connections vs. minHIGSS",
+#                       xaxis_title="Minimum HI gene similarity score",
+#                       yaxis_title="Number of patients with ≥ n connections",
+#                       legend_title="Connection Threshold (n)",
+#                       hovermode="x unified")
+#     return fig
+
+
+def ph_score_vs_group_size(comparison, phenotypes, hi_scores, dom_gene_match=True,
                            rel_threshold=0.2, abs_threshold=2, min_size=5):
     thresh = (rel_threshold, abs_threshold)
     fig = go.Figure()
     for hi_score in sorted(hi_scores, reverse=True):
-        _, group_phs, _ = comparison.test_all_homogeneities(
-            phenotypes=phenotypes,
-            hi_similarity=hi_score,
-            group_size_threshold=min_size
-            )
+        group_phs = comparison.test_all_homogeneities(phenotypes=phenotypes,
+                                                      hi_gene_similarity=hi_score,
+                                                      dom_gene_match=dom_gene_match)
         data = [(group_ph.group_size, group_ph.calculate_homogeneity(*thresh))
-                for group_ph in group_phs.values()]
+                for group_ph in group_phs.values() if group_ph.group_size >= min_size]
         data.sort(key=lambda x: x[0])
         xs, ys = zip(*data)
         fig.add_trace(go.Scatter(x=xs, y=ys, mode="markers", name=f"HI ≥ {hi_score}"))
-    fig.update_layout(title=f"PH Score vs Group Size, for groups ≥ {min_size}",
+    title = f"PH Score vs Group Size, for groups ≥ {min_size}"
+    if dom_gene_match:
+        title += " with matching DE genes"
+    fig.update_layout(title=title,
                       xaxis_title="Group size",
                       yaxis_title="PH score",
                       legend_title="HI Threshold")
     return fig
 
 
+# %% Patients per PH score
 def patients_per_ph(comparison, phenotypes,
                     hi_scores=(0.5, 0.6, 0.7, 0.75, 0.8, 0.9),
+                    dom_gene_match=True,
                     rel_threshold=0.2, abs_threshold=2, min_size=5,
                     raw_patient_count=False, add_error=False):
     thresh = (rel_threshold, abs_threshold)
@@ -260,13 +303,11 @@ def patients_per_ph(comparison, phenotypes,
         hovertemplate = "PH ≥ %{x}: %{y} (%{customdata:.2%})"
     fig = go.Figure()
     for n, hi_score in enumerate(sorted(hi_scores, reverse=True)):
-        _, group_phs, _ = comparison.test_all_homogeneities(
-            phenotypes=phenotypes,
-            hi_similarity=hi_score,
-            group_size_threshold=min_size
-            )
+        group_phs = comparison.test_all_homogeneities(phenotypes=phenotypes,
+                                                      hi_gene_similarity=hi_score,
+                                                      dom_gene_match=dom_gene_match)
         data = [group_ph.calculate_homogeneity(*thresh)
-                for group_ph in group_phs.values()]
+                for group_ph in group_phs.values() if group_ph.group_size >= min_size]
         data = [sum([x >= i for x in data]) for i in np.linspace(0, 1, 51)]
         data_len = len(group_phs)
         customdata = [point/data_len for point in data]
@@ -285,6 +326,44 @@ def patients_per_ph(comparison, phenotypes,
     return fig
 
 
+def ph_histogram(comparison=None, phenotypes=None, existing_ph_database=None,
+                 length_similarity=0, loci_similarity=0, gene_similarity=0,
+                 hi_gene_similarity=0, dom_gene_match=True, hpo_similarity=0,
+                 rel_threshold=0.2, abs_threshold=2, min_size=5,
+                 raw_patient_count=True):
+    if existing_ph_database is not None:
+        group_phs = existing_ph_database
+    else:
+        score_thresholds = dict(length_similarity=length_similarity,
+                                loci_similarity=loci_similarity,
+                                gene_similarity=gene_similarity,
+                                hi_gene_similarity=hi_gene_similarity,
+                                dom_gene_match=dom_gene_match,
+                                hpo_similarity=hpo_similarity)
+        group_phs = comparison.compare_all_patient_pheno_prevalences(phenotypes=phenotypes,
+                                                                     **score_thresholds)
+
+    upper, lower = group_phs.calculate_all_homogeneities(rel_threshold, abs_threshold, min_size)
+    upper = [100*score for score in upper.values()]
+    lower = [100*score for score in lower.values()]
+
+    histnorm = "" if raw_patient_count else "percent"
+    count_name = "Count" if raw_patient_count else "Percent"
+
+    params = dict(autobinx=False, xbins=dict(start=0, size=5), histnorm=histnorm,
+                  hovertemplate="Homogeneity Score: %{x}%<br>Count: %{y}")
+
+    fig = go.Figure()
+    fig.add_trace(go.Histogram(x=upper, name=f"Group >= {min_size}", **params))
+    fig.add_trace(go.Histogram(x=lower, name=f"Group < {min_size}", **params))
+
+    fig.update_layout(title=f"Histogram of Patient PH Scores",
+                      xaxis_title="PH score",
+                      yaxis_title=f"{count_name} of Patients",
+                      barmode="stack")
+    return fig
+
+
 def patients_per_ph_w_error(comparison, phenotypes,
                             hi_scores=(0.5, 0.6, 0.7, 0.75, 0.8, 0.9),
                             rel_threshold=0.2, abs_threshold=2,
@@ -294,9 +373,10 @@ def patients_per_ph_w_error(comparison, phenotypes,
     x_axis = np.linspace(0, 1, 51)
 
     for i, hi_score in enumerate(sorted(hi_scores, reverse=True)):
+        # TODO: Removed upper/lower homogen output, so this is broken.
         _, group_phs, _ = comparison.test_all_homogeneities(
             phenotypes=phenotypes,
-            hi_similarity=hi_score,
+            hi_gene_similarity=hi_score,
             group_size_threshold=min_size
             )
         data = [group_ph.calculate_homogeneity(*thresh)
@@ -309,9 +389,10 @@ def patients_per_ph_w_error(comparison, phenotypes,
         error_data[0] = data
         for perm in range(1, random_combinations+1):
             phenos= np.random.choice(phenotypes, 20, replace=False)
+            # TODO: Removed upper/lower homogen output, so this is broken.
             _, group_phs, _ = comparison.test_all_homogeneities(
                 phenotypes=phenos,
-                hi_similarity=hi_score,
+                hi_gene_similarity=hi_score,
                 group_size_threshold=min_size
                 )
             error_perm_data = [group_ph.calculate_homogeneity(*thresh)
@@ -368,9 +449,10 @@ def patients_per_ph_by_area(comparison, phenotypes,
     fig = make_subplots(1, 3)
 
     for n, hi_score in enumerate(sorted(hi_scores, reverse=True)):
+        # TODO: Removed upper/lower homogen output, so this is broken.
         _, group_phs, _ = comparison.test_all_homogeneities(
             phenotypes=phenotypes,
-            hi_similarity=hi_score,
+            hi_gene_similarity=hi_score,
             group_size_threshold=min_size
             )
 
@@ -406,9 +488,13 @@ def patients_per_ph_by_area(comparison, phenotypes,
     return fig
 
 
+# %% Phenotype prediction plots
 def plot_precision_stats(prediction_database, patient_database, phenotypes=None,
-                         abs_threshold=2, rel_threshold=0.2, group_size_threshold=4):
-    params = (phenotypes, abs_threshold, rel_threshold, group_size_threshold)
+                         rel_threshold=0.2, abs_threshold=2, use_adjusted_frequency=True,
+                         group_size_threshold=5):
+    hovertemplate = "%{customdata}<br>Pos: %{x}<br>Size: %{marker.size}<br>Value: %{y}"
+    params = (phenotypes, rel_threshold, abs_threshold, group_size_threshold,
+              use_adjusted_frequency)
     prediction_stats = prediction_database.calculate_individual_precision(*params)
     positions = [patient_database[patient].get_median_cnv_position("6")
                  for patient in prediction_stats]
@@ -424,5 +510,10 @@ def plot_precision_stats(prediction_database, patient_database, phenotypes=None,
                                  y=prediction_stats[stat],
                                  name=stat,
                                  mode="markers",
-                                 marker=dict(size=prediction_stats["Size"])))
+                                 marker=dict(size=prediction_stats["Size"]),
+                                 customdata=list(prediction_stats.index),
+                                 hovertemplate=hovertemplate))
+    fig.update_layout(title="Phenotype Prediction Precision Metrics",
+                      xaxis_title="Chromosome 6 Position",
+                      yaxis_title="Precision Value")
     return fig
