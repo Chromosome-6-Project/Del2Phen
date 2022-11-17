@@ -236,10 +236,10 @@ class Gene:
         return hash(string)
 
     def is_haploinsufficient(self, pLI_threshold=0.9, HI_threshold=10,
-                             phaplo_threshold=0.86):
-                             # loeuf_threshold=.25):
-        """Check if gene has sufficient pLI, HI, or LOEUF score."""
-        return is_haploinsufficient(self, pLI_threshold, HI_threshold, phaplo_threshold)  #, loeuf_threshold)
+                             phaplo_threshold=0.86, mode="any"):
+        """Check if gene has sufficient pLI, HI, or pHaplo score."""
+        return is_haploinsufficient(self, pLI_threshold, HI_threshold,
+                                    phaplo_threshold, mode)
 
 
 class GeneSet:
@@ -574,8 +574,18 @@ def is_haploinsufficient(gene, pLI_threshold=0.9, HI_threshold=10,
     phaplo_pass = gene.phaplo_score is not None and gene.phaplo_score >= phaplo_threshold
     if mode == "all":
         return all([hi_pass, pli_pass, phaplo_pass])
-    else:
+    elif mode == "any":
         return any([hi_pass, pli_pass, phaplo_pass])
+    elif mode == "2":
+        return (hi_pass + pli_pass + phaplo_pass) >= 2
+    elif mode == "confirm":
+        none_count = [gene.pli_score, gene.hi_score, gene.phaplo_score].count(None)
+        if none_count == 0:
+            return (hi_pass + pli_pass + phaplo_pass) >= 2
+        elif none_count == 1:
+            return (hi_pass + pli_pass + phaplo_pass) >= 1
+        else:
+            return False
 
 
 # %% Main
