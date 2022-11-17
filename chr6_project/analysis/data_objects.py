@@ -421,10 +421,12 @@ class Patient:
         all_genes = {gene for cnv in self.cnvs for gene in cnv.genes}
         return all_genes
 
-    def all_HI_genes(self, pLI_threshold=0.9, HI_threshold=10, phaplo_threshold=.86):
+    def all_HI_genes(self, pLI_threshold=0.9, HI_threshold=10,
+                     phaplo_threshold=.86, mode="any"):
         """Get all haploinsufficient genes affected by all CNVs."""
         hi_genes = {gene for cnv in self.cnvs for gene in cnv.genes
-                    if is_haploinsufficient(gene, pLI_threshold, HI_threshold, phaplo_threshold)}
+                    if is_haploinsufficient(gene, pLI_threshold, HI_threshold,
+                                            phaplo_threshold, mode)}
         return hi_genes
 
     def all_dominant_genes(self):
@@ -437,12 +439,12 @@ class Patient:
                  if response == "T"}
         return trues
 
-    def expand_hpo_terms(self):
-        expanded = {parent for term, response in self.hpo.items()
-                    for parent in term.superclasses()
-                    if response == "T"}
-        for hpo in expanded:
-            self.hpo[hpo] = "T"
+    # def expand_hpo_terms(self):
+    #     expanded = {parent for term, response in self.hpo.items()
+    #                 for parent in term.superclasses()
+    #                 if response == "T"}
+    #     for hpo in expanded:
+    #         self.hpo[hpo] = "T"
 
     def convert_birthday_to_datetime(self):
         if not self.phenotypes:
