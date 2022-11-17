@@ -10,8 +10,9 @@ import pandas as pd
 
 from chr6_project.analysis.data_objects import PatientDatabase
 from chr6_project.analysis.phenotype_homogeneity import (
-    PhenotypeHomogeneity,
-    GroupPhenotypeHomogeneity,
+    PhenotypePrevalence,
+    PatientGroupPrevalences,
+    HomogeneityDatabase
     )
 from chr6_project.analysis.phenotype_prediction import (
     TraitPrediction,
@@ -120,6 +121,11 @@ class ComparisonTable:
                                                             )
             comparisons[id_i] = patient_comparison
         return comparisons
+
+    def recompare_patients(self, pLI_threshold=0.9, HI_threshold=10, phaplo_threshold=0.86,
+                         mode="any"):
+        self.raw = self.compare_patients(pLI_threshold, HI_threshold, phaplo_threshold, mode)
+        self.array = self.make_array()
 
     @classmethod
     def compare_all(cls, patient_1, patient_2,
@@ -330,30 +336,26 @@ class ComparisonTable:
             include_self=True, as_patient_database=True
             )
         size = group.size
-        homogeneities = {
+        prevs = {
             phenotype: sum([patient.hpo[phenotype] == "T" for patient in group
                             if phenotype in patient.hpo])
             for phenotype in phenotypes
             }
-        homogeneities = {phenotype: PhenotypeHomogeneity(patient_id, group, phenotype, size, prevalence)
-                         for phenotype, prevalence in homogeneities.items()}
-        homogeneities = GroupPhenotypeHomogeneity(patient_id, group, homogeneities)
-        return homogeneities
+        prevs = {phenotype: PhenotypePrevalence(patient_id, group, phenotype, size, prevalence)
+                 for phenotype, prevalence in prevs.items()}
+        prevs = PatientGroupPrevalences(patient_id, group, prevs)
+        return prevs
 
-    def test_all_homogeneities(self, phenotypes, length_similarity=0,
-                               loci_similarity=0, gene_similarity=0,
-                               hi_similarity=0, hpo_similarity=0,
-                               group_size_threshold=5, include_isolates=False):
-        params = [phenotypes, length_similarity, loci_similarity,
-                  gene_similarity, hi_similarity, hpo_similarity]
-        all_homogeneities = {patient: self.test_phenotype_homogeneities(patient, *params)
-                             for patient in self.index.keys()}
-        upper_homogeneities = {patient: homogen for patient, homogen in all_homogeneities.items()
-                               if homogen.group_size >= group_size_threshold}
-        lower_homogeneities = {patient: homogen for patient, homogen in all_homogeneities.items()
-                               if homogen.group_size < group_size_threshold}
-
-        return all_homogeneities, upper_homogeneities, lower_homogeneities
+    def compare_all_patient_pheno_prevalences(self, phenotypes, length_similarity=0,
+                                              loci_similarity=0, gene_similarity=0,
+                                              hi_gene_similarity=0, dom_gene_match=True,
+                                              hpo_similarity=0):
+        params = [phenotypes, length_similarity, loci_similarity, gene_similarity,
+                  hi_gene_similarity, dom_gene_match, hpo_similarity]
+        all_prevs = {patient: self.compare_patient_pheno_prevalence(patient, *params)
+                     for patient in self.index.keys()}
+        all_prevs = HomogeneityDatabase(all_prevs)
+        return all_prevs
 
 # =============================================================================
 #     @staticmethod
@@ -382,8 +384,8 @@ class ComparisonTable:
 # =============================================================================
 
     @staticmethod
-    def predict_phenotypes2(comparison_group, show=10,
-                            additional_hpos=None, additional_groupname="Added"):
+    def predict_phenotypes(comparison_group, show=10,
+                           additional_hpos=None, additional_groupname="Added"):
         population = len(comparison_group)
         if population == 0:
             return dict()
@@ -438,9 +440,9 @@ class ComparisonTable:
         if skip_no_hpos:
             comparison_group = [patient for patient in comparison_group if patient.hpo]
 
-        predictions = self.predict_phenotypes2(comparison_group, show=0,
-                                               additional_hpos=index_hpos,
-                                               additional_groupname="index")
+        predictions = self.predict_phenotypes(comparison_group, show=0,
+                                              additional_hpos=index_hpos,
+                                              additional_groupname="index")
         predictions = PatientPredictions(
             patient=patient_id,
             patient_group=PatientDatabase({patient.id: patient for patient in comparison_group}),
