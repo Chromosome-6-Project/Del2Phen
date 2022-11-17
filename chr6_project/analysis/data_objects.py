@@ -188,6 +188,7 @@ class PatientDatabase:
         self.index = self.make_index()
         self.cnvs = self.organize_cnvs()
         self.size = len(self.patients)
+        self.hpos = {hpo for patient in self for hpo in patient.hpo}
 
     def __len__(self):
         return self.size
@@ -253,7 +254,7 @@ class PatientDatabase:
 
     def make_phenotype_table(self):
         """Tabulate phenotype info for all patients."""
-        all_hpos = sorted(list({hpo.id for patient in self for hpo in patient.hpo}))
+        all_hpos = sorted({hpo.id for hpo in self.hpos})
         all_hpos = {name: pos for pos, name in enumerate(all_hpos)}
         hpo_count = len(all_hpos)
 
