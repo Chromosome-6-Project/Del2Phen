@@ -52,14 +52,15 @@ class TraitPrediction:
         return string
 
     def make_table_row(self):
-        row = []
+        row = {}
         for attr, value in self.__dict__.items():
             if attr.startswith("_"):
                 continue
             if isinstance(value, Term):
-                row.append(value.id)
+                row[attr] = value.id
+                row["trait name"] = value.name
                 continue
-            row.append(value)
+            row[attr] = value
         return row
 
 
@@ -72,7 +73,8 @@ class PatientPredictions:
     def __len__(self):
         return len(self.predictions)
 
-    def make_confusion_matrix(self, phenotypes=None, abs_threshold=2, rel_threshold=0.2):
+    def make_confusion_matrix(self, phenotypes=None, rel_threshold=0.2, abs_threshold=2,
+                              use_adjusted_frequency=True):
         predictions = self.predictions
         if phenotypes is not None:
             predictions = {term: prediction for term, prediction in predictions.items()
@@ -81,10 +83,14 @@ class PatientPredictions:
 
         index = {term for term, prediction in predictions.items()
                  if prediction.group == "index"}
-        above_threshold = {term for term, prediction in predictions.items()
-                           if prediction.true_count >= abs_threshold
-                           and prediction.freq_adjusted >= rel_threshold}
-
+        if use_adjusted_frequency:
+            above_threshold = {term for term, prediction in predictions.items()
+                               if prediction.true_count >= abs_threshold
+                               and prediction.freq_adjusted >= rel_threshold}
+        else:
+            above_threshold = {term for term, prediction in predictions.items()
+                               if prediction.true_count >= abs_threshold
+                               and prediction.freq >= rel_threshold}
         confusion[0][0] = len(index & above_threshold)
         confusion[1][0] = len(above_threshold - index)
         confusion[0][1] = len(index - above_threshold)
@@ -93,14 +99,10 @@ class PatientPredictions:
         return confusion
 
     def convert_patient_predictions_to_df(self):
-        table = []
-        predictions = sorted(self.predictions.values(), key=lambda x: x.freq_adjusted,
-                             reverse=True)
-        for prediction in predictions:
-            table.append(prediction.make_table_row())
-        column_labels = [attr.title() for attr in predictions[0].__dict__.keys()
-                         if not attr.startswith("_")]
-        table = pd.DataFrame(table, columns=column_labels)
+        table = [prediction.make_table_row() for prediction in self.predictions.values()]
+        column_labels = [key.title() for key in table[0]]
+        table = pd.DataFrame(table)
+        table.columns = column_labels
         return table
 
 
@@ -108,9 +110,10 @@ class PredictionDatabase:
     def __init__(self, patient_predictions):
         self.predictions = patient_predictions
 
-    def make_overall_confusion_matrix(self, phenotypes=None, abs_threshold=2,
-                                      rel_threshold=0.2, group_size_threshold=4):
-        params = (phenotypes, abs_threshold, rel_threshold)
+    def make_overall_confusion_matrix(self, phenotypes=None, rel_threshold=0.2,
+                                      abs_threshold=2, use_adjusted_frequency=True,
+                                      group_size_threshold=5):
+        params = (phenotypes, rel_threshold, abs_threshold, use_adjusted_frequency)
         matrices = []
         for prediction in self.predictions.values():
             if prediction.patient_group.size < group_size_threshold:
@@ -119,18 +122,21 @@ class PredictionDatabase:
         matrix = sum(matrices)
         return matrix
 
-    def make_individual_confusion_matrices(self, phenotypes=None, abs_threshold=2,
-                                           rel_threshold=0.2, group_size_threshold=4):
-        params = (phenotypes, abs_threshold, rel_threshold)
+    def make_individual_confusion_matrices(self, phenotypes=None, rel_threshold=0.2,
+                                           abs_threshold=2, use_adjusted_frequency=True,
+                                           group_size_threshold=5):
+        params = (phenotypes, rel_threshold, abs_threshold, use_adjusted_frequency)
         matrices = {
             patient: predict.make_confusion_matrix(*params)
             for patient, predict in self.predictions.items()
             if predict.patient_group.size > group_size_threshold}
         return matrices
 
-    def calculate_individual_precision(self, phenotypes=None, abs_threshold=2,
-                                       rel_threshold=0.2, group_size_threshold=4):
-        params = (phenotypes, abs_threshold, rel_threshold, group_size_threshold)
+    def calculate_individual_precision(self, phenotypes=None, rel_threshold=0.2,
+                                       abs_threshold=2, use_adjusted_frequency=True,
+                                       group_size_threshold=5):
+        params = (phenotypes, rel_threshold, abs_threshold, group_size_threshold,
+                  use_adjusted_frequency)
         stat_names = ("Sensitivity", "Specificity", "PPV", "NPV")
         precision_stats = {}
         for patient, mat in self.make_individual_confusion_matrices(*params).items():
@@ -142,9 +148,11 @@ class PredictionDatabase:
             precision_stats[patient] = dict(zip(stat_names, patient_stats))
         return precision_stats
 
-    def calculate_overall_precision(self, phenotypes=None, abs_threshold=2,
-                                    rel_threshold=0.2, group_size_threshold=4):
-        params = (phenotypes, abs_threshold, rel_threshold, group_size_threshold)
+    def calculate_overall_precision(self, phenotypes=None, rel_threshold=0.2,
+                                    abs_threshold=2, use_adjusted_frequency=True,
+                                    group_size_threshold=5):
+        params = (phenotypes, rel_threshold, abs_threshold, group_size_threshold,
+                  use_adjusted_frequency)
         confusion = self.make_overall_confusion_matrix(*params)
         stat_names = ("Sensitivity", "Specificity", "PPV", "NPV")
         margins = list(confusion.sum(1)) + list(confusion.sum(0))
@@ -153,10 +161,12 @@ class PredictionDatabase:
         stats = dict(zip(stat_names, stats))
         return stats
 
-    def plot_precision_stats(self, patient_database, phenotypes=None, abs_threshold=2,
-                             rel_threshold=0.2, group_size_threshold=4):
+    def plot_precision_stats(self, patient_database, phenotypes=None, rel_threshold=0.2,
+                             abs_threshold=2, use_adjusted_frequency=True,
+                             group_size_threshold=5):
         precision_plot = plot_precision_stats(self, patient_database, phenotypes,
-                                              abs_threshold, rel_threshold,
+                                              rel_threshold, abs_threshold,
+                                              use_adjusted_frequency,
                                               group_size_threshold)
         return precision_plot
 
