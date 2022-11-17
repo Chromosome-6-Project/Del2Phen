@@ -29,12 +29,14 @@ from chr6_project.analysis.utilities import (
 class ComparisonTable:
     """Data object holding all patient vs. patient comparisons."""
 
-    def __init__(self, patient_db=None, comparison_table=None):
+    def __init__(self, patient_db=None, pLI_threshold=0.9, HI_threshold=10,
+                 phaplo_threshold=0.86, comparison_table=None, mode="confirm"):
         if comparison_table is not None:
             self.read_from_existing(comparison_table)
             return
         self.patient_db = patient_db
-        self.raw = self.compare_patients()
+        self.raw = self.compare_patients(pLI_threshold, HI_threshold,
+                                         phaplo_threshold, mode)
         self.index = self.make_index()
         self.array = self.make_array()
         self.size = len(self.index)
@@ -97,24 +99,32 @@ class ComparisonTable:
         self.array = comparison_table.array
         self.size = comparison_table.size
 
-    def compare_patients(self):
+    def compare_patients(self, pLI_threshold=0.9, HI_threshold=10, phaplo_threshold=0.86,
+                         mode="any"):
         """Compare all patients to each other."""
         ids = list(self.patient_db.patients.keys())
         comparisons = {}
         while ids:
             id_i = ids.pop()
             patient_i = self.patient_db[id_i]
-            patient_comparison = {}
-            patient_comparison[id_i] = self.compare_all(patient_i, patient_i)
+            patient_comparison = dict()
+            patient_comparison[id_i] = self.compare_all(patient_i, patient_i,
+                                                        pLI_threshold, HI_threshold,
+                                                        phaplo_threshold, mode)
 
             for id_j in ids:
                 patient_j = self.patient_db[id_j]
-                patient_comparison[id_j] = self.compare_all(patient_i, patient_j)
+                patient_comparison[id_j] = self.compare_all(patient_i, patient_j,
+                                                            pLI_threshold, HI_threshold,
+                                                            phaplo_threshold, mode
+                                                            )
             comparisons[id_i] = patient_comparison
         return comparisons
 
     @classmethod
-    def compare_all(cls, patient_1, patient_2):
+    def compare_all(cls, patient_1, patient_2,
+                    pLI_threshold=0.9, HI_threshold=10,
+                    phaplo_threshold=0.86, mode="any"):
         """Compare all metrics between two patients."""
         cnv_type = {cnv.change for cnv in patient_1.cnvs + patient_2.cnvs}
         if len(cnv_type) == 0:
@@ -126,7 +136,9 @@ class ComparisonTable:
         length_compare = cls.compare_length(patient_1, patient_2)
         loci_compare = cls.compare_loci(patient_1, patient_2)
         gene_compare = cls.compare_genes(patient_1, patient_2)
-        hi_compare = cls.compare_HI_genes(patient_1, patient_2)
+        hi_compare = cls.compare_HI_genes(patient_1, patient_2,
+                                          pLI_threshold, HI_threshold,
+                                          phaplo_threshold, mode)
         dom_compare = cls.compare_dominant_genes(patient_1, patient_2)
         dom_match = cls.check_dominant_match(patient_1, patient_2)
         hpo_compare = cls.compare_hpos(patient_1, patient_2)
@@ -179,18 +191,20 @@ class ComparisonTable:
 
     @staticmethod
     def compare_HI_genes(patient_1, patient_2,
-                         pLI_threshold=0.9, HI_threshold=10):
+                         pLI_threshold=0.9, HI_threshold=10,
+                         phaplo_threshold=0.86, mode="any"):
         """Compare affected HI genes between two patients."""
         jaccard_index, intersect = jaccard(
-            patient_1.all_HI_genes(pLI_threshold, HI_threshold),
-            patient_2.all_HI_genes(pLI_threshold, HI_threshold)
+            patient_1.all_HI_genes(pLI_threshold, HI_threshold, phaplo_threshold, mode),
+            patient_2.all_HI_genes(pLI_threshold, HI_threshold, phaplo_threshold, mode)
             )
         return jaccard_index, intersect
 
     @staticmethod
     def compare_dominant_genes(patient_1, patient_2):
         """Compare affected dominant-effect genes between two patients."""
-        jaccard_index, intersect = jaccard(patient_1.all_dominant_genes(), patient_2.all_dominant_genes())
+        jaccard_index, intersect = jaccard(patient_1.all_dominant_genes(),
+                                           patient_2.all_dominant_genes())
         return jaccard_index, intersect
 
     @staticmethod
@@ -228,7 +242,7 @@ class ComparisonTable:
     def filter_patient_intersects(self, patient_id,
                                   length_similarity=0, loci_similarity=0,
                                   gene_similarity=0, hi_gene_similarity=0,
-                                  dom_gene_match=False, hpo_similarity=0,
+                                  dom_gene_match=True, hpo_similarity=0,
                                   include_self=False, as_patient_database=False):
         intersects = [inter for inter in self.lookup(patient_id, "all") if all(
             [inter.length_similarity >= length_similarity,
@@ -306,10 +320,10 @@ class ComparisonTable:
     #         patients = PatientDatabase({patient.id: patient for patient in patients})
     #     return patients
 
-    def test_phenotype_homogeneities(self, patient_id, phenotypes,
-                                     length_similarity=0, loci_similarity=0,
-                                     gene_similarity=0, hi_gene_similarity=0,
-                                     dom_gene_match=False, hpo_similarity=0):
+    def compare_patient_pheno_prevalence(self, patient_id, phenotypes,
+                                         length_similarity=0, loci_similarity=0,
+                                         gene_similarity=0, hi_gene_similarity=0,
+                                         dom_gene_match=True, hpo_similarity=0):
         group = self.filter_patient_intersects(
             patient_id, length_similarity, loci_similarity,
             gene_similarity, hi_gene_similarity, dom_gene_match, hpo_similarity,
@@ -409,7 +423,7 @@ class ComparisonTable:
     def test_phenotype_prediction(self, patient_id,
                                   length_similarity=0, loci_similarity=0,
                                   gene_similarity=0, hi_gene_similarity=0,
-                                  dom_gene_match=False, hpo_similarity=0,
+                                  dom_gene_match=True, hpo_similarity=0,
                                   skip_no_hpos=True):
         params = [patient_id, length_similarity, loci_similarity, gene_similarity,
                   hi_gene_similarity, dom_gene_match, hpo_similarity]
@@ -436,7 +450,7 @@ class ComparisonTable:
 
     def test_all_phenotype_predictions(self, length_similarity=0, loci_similarity=0,
                                        gene_similarity=0, hi_gene_similarity=0,
-                                       dom_gene_match=False, hpo_similarity=0,
+                                       dom_gene_match=True, hpo_similarity=0,
                                        skip_no_hpos=True, filter_unknowns=True):
         params = [length_similarity, loci_similarity, gene_similarity, hi_gene_similarity,
                   dom_gene_match, hpo_similarity, skip_no_hpos]
