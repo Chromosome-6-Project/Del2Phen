@@ -21,7 +21,8 @@ pio.renderers.default = "browser"
 Node = namedtuple("Node", ["id", "label", "group", "color",
                            "value", "title", "hi_genes", "dom_genes", "ranges"])
 Edge = namedtuple("Edge", ["edge_id", "id1", "id2", "width", "color", "title", "change",
-                           "length_sim", "overlap_sim", "gene_sim", "hi_sim", "dom_match"])
+                           "length_sim", "overlap_sim", "gene_sim", "hi_sim", "dom_match",
+                           "hpo_sim"])
 
 
 def build_network_nodes(comparison_table):
@@ -125,7 +126,8 @@ def build_network_edges(comparison_table):
                  f"Shared Dominant-Effect genes: {dom_gene_count} (Matched: {dom_gene_match})<br>"
                  f"Shared HPO terms: {hpo_count} ({hpo_sim:.2%})<br></p>")
         edges.append(Edge(edge_id, id1, id2, overlap_sim*100, color, title, change,
-                          length_sim, overlap_sim, gene_sim, hi_gene_sim, dom_gene_match))
+                          length_sim, overlap_sim, gene_sim, hi_gene_sim, dom_gene_match,
+                          hpo_sim))
     return edges
 
 
@@ -204,16 +206,16 @@ def make_nx_graph_from_comparisons(comparison_table):
     return graph
 
 
-def filter_graph_edges(graph, length_sim_threshold=0, overlap_sim_threshold=0,
-                       gene_sim_threshold=0, hi_gene_sim_threshold=0,
-                       dom_gene_match=False):
+def filter_graph_edges(graph, length_similarity=0, loci_similarity=0, gene_similarity=0,
+                       hi_gene_similarity=0, dom_gene_match=True, hpo_similarity=0):
     edges = list(graph.edges.items())
     edges = [(edge[0][0], edge[0][1], edge[1]) for edge in edges
-             if all([edge[1]["length_sim"] >= length_sim_threshold,
-                    edge[1]["overlap_sim"] >= overlap_sim_threshold,
-                    edge[1]["gene_sim"] >= gene_sim_threshold,
-                    edge[1]["hi_sim"] >= hi_gene_sim_threshold,
-                    ((not dom_gene_match) or edge[1]["dom_match"] in {0, 1})])]
+             if all([edge[1]["length_sim"] >= length_similarity,
+                     edge[1]["overlap_sim"] >= loci_similarity,
+                     edge[1]["gene_sim"] >= gene_similarity,
+                     edge[1]["hi_sim"] >= hi_gene_similarity,
+                     edge[1]["dom_match"] or not dom_gene_match,
+                     edge[1]["hpo_sim"] >= hpo_similarity])]
     filtered_graph = nx.Graph()
     filtered_graph.add_nodes_from(graph.nodes)
     filtered_graph.add_edges_from(edges)
