@@ -92,7 +92,7 @@ class DataManager:
                     new_int = int(new_int)
                     entry[converted] = new_int
                 except ValueError as err:
-                    print(f"Could not parse {err}")
+                    print(f"Error while parsing:\n{err}")
         return fixed
 
     @staticmethod
@@ -114,27 +114,6 @@ class DataManager:
                              for x, y in list(entry.items())[1:]}
             for entry in data
             }
-        return new_data
-
-    @staticmethod
-    def add_custom_hpos(data):
-        new_data = {}
-        for patient, responses in data.items():
-            neuro = responses["HP:0012758"]
-            if neuro == "F":
-                responses["NEURODEV_NORMAL"] = "T"
-            elif neuro == "T":
-                responses["NEURODEV_NORMAL"] = "F"
-            else:
-                responses["NEURODEV_NORMAL"] = "NA"
-            feed_tube = {responses["HP:0011470"],  responses["HP:0011471"]}
-            if "T" in feed_tube:
-                responses["FEED_TUBE"] = "T"
-            elif feed_tube == {"F"}:
-                responses["FEED_TUBE"] = "F"
-            else:
-                responses["FEED_TUBE"] = "NA"
-            new_data[patient] = responses
         return new_data
 
     @classmethod
