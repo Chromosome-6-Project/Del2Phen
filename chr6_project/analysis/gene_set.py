@@ -590,6 +590,7 @@ def is_haploinsufficient(gene, pLI_threshold=0.9, HI_threshold=10,
 
 # %% Main
 def _read_defaults():
+    geneset = list(pkg_resources.path(resources, "hg19.ensGene.chr6.gtf.gz").gen)[0]
     pli = list(pkg_resources.path(resources, "gnomad.v2.1.1.lof_metrics.by_gene.6.tsv").gen)[0]
     hi = list(pkg_resources.path(resources, "HI_Predictions.v3.chr6.bed").gen)[0]
     phaplo = list(pkg_resources.path(resources, "phaplo_scores.chr6.tsv").gen)[0]
@@ -598,13 +599,24 @@ def _read_defaults():
     phaplo_genes = read_phaplo_gene_data(phaplo)
     hi_genes = make_hi_genes(hi)
     dominant_genes = read_dominant_gene_list(dom)
-    return pli_genes, hi_genes, phaplo_genes, dominant_genes
+    return geneset, pli_genes, hi_genes, phaplo_genes, dominant_genes
 
 
 def read_geneset_gtf(geneset_gtf):
     """Load geneset."""
+    _, pli_genes, hi_genes, phaplo_genes, dominant_genes = _read_defaults()
     geneset = GeneSet(geneset_gtf)
-    pli_genes, hi_genes, phaplo_genes, dominant_genes = _read_defaults()
+    geneset.add_pLI_scores(pli_genes)
+    geneset.add_HI_scores(hi_genes)
+    geneset.add_phaplo_scores(phaplo_genes)
+    geneset.annotate_dominant_genes(dominant_genes)
+    return geneset
+
+
+def make_geneset():
+    """Load geneset."""
+    geneset, pli_genes, hi_genes, phaplo_genes, dominant_genes = _read_defaults()
+    geneset = GeneSet(geneset)
     geneset.add_pLI_scores(pli_genes)
     geneset.add_HI_scores(hi_genes)
     geneset.add_phaplo_scores(phaplo_genes)
