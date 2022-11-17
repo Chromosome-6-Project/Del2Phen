@@ -14,6 +14,11 @@ def read_hpo_ontology():
     return ontology
 
 
+def get_default_termset_yaml_path():
+    yaml_path = list(pkg_resources.path(resources, "default_termset.yaml").gen)[0]
+    return yaml_path
+
+
 def read_custom_termset_yaml(path):
     with open(path) as infile:
         termset_info = yaml.safe_load(infile)
