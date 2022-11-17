@@ -7,7 +7,8 @@ import csv
 
 from chr6_project.analysis.patient_comparison import ComparisonTable
 from chr6_project.analysis.data_objects import PatientDatabase, Patient
-from chr6_project.analysis.gene_set import read_geneset_gtf
+from chr6_project.analysis.gene_set import make_geneset, read_geneset_gtf
+from chr6_project.molgenis_import.import_data import import_chr6_data
 import chr6_project.analysis.hpo as c6_hpo
 
 
@@ -62,13 +63,13 @@ class DataManager:
     def fix_hg19_positions(data):
         """Fill missing position data, if available, and convert to int."""
         fixed = data
-        start_report = "Start position in report"
-        start_convert = "Start positie in Hg19"
-        stop_report = "Stop position in report"
-        stop_convert = "Stop positie in Hg19"
+        start_report = "Start_positie_in_report"
+        start_convert = "Start_positie_in_Hg19"
+        stop_report = "Stop_positie_in_report"
+        stop_convert = "Stop_positie_in_Hg19"
 
         for entry in fixed:
-            build = entry["Human genome build version"]
+            build = entry["Human_genome_build_version"]
             for reported, converted in [(start_report, start_convert),
                                         (stop_report, stop_convert)]:
                 reported_value = entry[reported]
@@ -99,10 +100,10 @@ class DataManager:
         """Remove 'chr' from contig names."""
         trimmed = data
         for entry in trimmed:
-            if not entry["Chromosome"]:
+            if not entry["Chromosoom"]:
                 continue
-            if entry["Chromosome"].lower().startswith("chr"):
-                entry["Chromosome"] = entry["Chromosome"].strip("chrCHR")
+            if entry["Chromosoom"].lower().startswith("chr"):
+                entry["Chromosoom"] = entry["Chromosoom"].lstrip("chrCHR")
         return trimmed
 
     @staticmethod
@@ -145,15 +146,15 @@ class DataManager:
 
     @staticmethod
     def make_patients(genotypes, phenotypes, geneset=None, hpos=None,
-                      ontology=None, expand_hpos=True):
+                      ontology=None):
         """Construct Patient objects from data."""
-        subjects = ({record["subject"] for record in genotypes}
-                    | {record["owner"] for record in phenotypes})
+        subjects = ({record["owner"] for record in genotypes}
+                    | {record["id"] for record in phenotypes.values()})
         patients = {subject: Patient(subject) for subject in subjects}
         for genotype in genotypes:
-            patients[genotype["subject"]].genotypes.append(genotype)
-        for phenotype in phenotypes:
-            patients[phenotype["owner"]].phenotypes.append(phenotype)
+            patients[genotype["owner"]].genotypes.append(genotype)
+        for phenotype in phenotypes.values():
+            patients[phenotype["id"]].phenotypes.append(phenotype)
         if geneset:
             for patient in patients.values():
                 patient.cnvs = patient.extract_cnvs()
@@ -178,7 +179,7 @@ class DataManager:
                 #     patient.expand_hpo_terms(ontology)
         for patient in patients.values():
             if patient.genotypes:
-                patient.origin = patient.genotypes[0]["origin info"]
+                patient.origin = patient.genotypes[0]["origin_info"]
             patient.convert_birthday_to_datetime()
         return patients
 
@@ -222,17 +223,25 @@ class DataManager:
         return drop_list
 
     @staticmethod
-    def filter_patients(patient_dict, drop_list, remove_ungenotyped=True,
-                        remove_unphenotyped=True):
-        patients_filtered = {name: patient for name, patient in patient_dict.items()
-                             if name not in drop_list
-                             and not (remove_ungenotyped and not patient.genotypes)
-                             and not (remove_unphenotyped and not patient.phenotypes)}
+    def filter_patients(patient_dict, drop_list=None, remove_ungenotyped=True,
+                        remove_unphenotyped=True, remove_unsubmitted=True):
+        if drop_list is None:
+            drop_list = set()
+        patients_filtered = {
+            name: patient for name, patient in patient_dict.items()
+            if all([
+                name not in drop_list,
+                patient.genotypes or not remove_ungenotyped,
+                patient.phenotypes or not remove_unphenotyped,
+                patient.check_if_submitted() or not remove_unsubmitted
+                ])
+            }
         return patients_filtered
 
 
 def analyze(genotypes, phenotypes, patient_hpo, geneset_gtf, drop_list_file,
-            hpo_termset_yaml=None, expand_hpos=False):
+            hpo_termset_yaml=None, expand_hpos=False, remove_ungenotyped=True,
+            remove_unphenotyped=True, remove_unsubmitted=True):
     # Read geneset.
     print("Loading gene set...")
     # Build GeneSet from source GTF file (gzipped) (slow, large file):
@@ -280,7 +289,8 @@ def analyze(genotypes, phenotypes, patient_hpo, geneset_gtf, drop_list_file,
 
     print("Filtering patients...")
     drop_list = DataManager.read_patient_drop_list(drop_list_file)
-    patients = DataManager.filter_patients(patients, drop_list)
+    patients = DataManager.filter_patients(patients, drop_list, remove_ungenotyped,
+                                           remove_unphenotyped, remove_unsubmitted)
 
     patients = PatientDatabase(patients)
 
@@ -299,3 +309,34 @@ def analyze(genotypes, phenotypes, patient_hpo, geneset_gtf, drop_list_file,
         # hi_genes,
         # genomedict
         )
+
+
+def analyze_online(username, password, drop_list_file=None, hpo_termset_yaml=None,
+                   expand_hpos=False, remove_ungenotyped=True, remove_unphenotyped=True,
+                   remove_unsubmitted=True):
+    print("Loading geneset...")
+    geneset = make_geneset()
+
+    print("Downloading patient data from Molgenis...")
+    genotypes, phenotypes, hpos = import_chr6_data(username, password)
+
+    print("Organizing patient HPO terms...")
+    ontology, hpos, termset = c6_hpo.make_c6_hpo_online(hpos, hpo_termset_yaml, expand_hpos)
+
+    print("Building patient objects...")
+    patients = DataManager.make_patients(genotypes, phenotypes, geneset, hpos, ontology)
+
+    if drop_list_file is not None:
+        print("Filtering patients...")
+        drop_list = DataManager.read_patient_drop_list(drop_list_file)
+        patients = DataManager.filter_patients(patients, drop_list, remove_ungenotyped,
+                                               remove_unphenotyped, remove_unsubmitted)
+
+    print("Building patient database...")
+    patients = PatientDatabase(patients)
+
+    print("Comparing patients...")
+    comparison = ComparisonTable(patients)
+
+    print("Done")
+    return comparison, geneset, ontology, termset
