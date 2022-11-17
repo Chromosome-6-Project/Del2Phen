@@ -151,6 +151,21 @@ def make_c6_hpo(patient_hpo_file, custom_termset_yaml=None, recursive_expansion=
     return ontology, patient_hpo_data, termset
 
 
+def make_c6_hpo_online(patient_hpo_data, custom_termset_yaml=None,
+                       recursive_expansion=False):
+    ontology = read_hpo_ontology()
+    patient_hpo_data = {pid: {ontology[hpo_id]: response for hpo_id, response in hpo_data.items()}
+                        for pid, hpo_data in patient_hpo_data.items()}
+    if recursive_expansion:
+        patient_hpo_data = expand_all_patients_hpo_terms(patient_hpo_data)
+    if custom_termset_yaml is None:
+        return ontology, patient_hpo_data, None
+    termset_info = read_custom_termset_yaml(custom_termset_yaml)
+    add_custom_terms(termset_info, ontology)
+    termset = make_termset(termset_info, ontology)
+    assign_custom_responses(termset, patient_hpo_data, ontology)
+    return ontology, patient_hpo_data, termset
+
 # if __name__ == "__main__":
 #     import sys
 #     ontology, patient_hpo_data, termset = make_c6_hpo(sys.argv[1], sys.argv[2])
