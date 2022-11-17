@@ -375,9 +375,11 @@ class Patient:
         """Pull CNV data from genotype information."""
         cnvs = []
         for genotype in self.genotypes:
-            chrom = genotype["Chromosome"]
-            start = genotype["Start positie in Hg19"]
-            stop = genotype["Stop positie in Hg19"]
+            if "Start_positie_in_Hg19" not in genotype or "Stop_positie_in_Hg19" not in genotype:
+                continue
+            chrom = genotype["Chromosoom"]
+            start = genotype["Start_positie_in_Hg19"]
+            stop = genotype["Stop_positie_in_Hg19"]
             change = genotype["imbalance"]
 
             if chrom not in REFERENCE_CHR or not start or not stop:
@@ -449,7 +451,7 @@ class Patient:
     def convert_birthday_to_datetime(self):
         if not self.phenotypes:
             return
-        if not self.phenotypes[0]["birthdate"]:
+        if "birthdate" not in self.phenotypes[0] or not self.phenotypes[0]["birthdate"]:
             return
         self.birthdate = datetime.strptime(
             self.phenotypes[0]["birthdate"],
@@ -460,3 +462,8 @@ class Patient:
             years -= 1
         self.age = years
         return
+
+    def check_if_submitted(self):
+        submits = {status for pheno in self.phenotypes
+                   for status in pheno["submit_status"]}
+        return "SUBMITTED" in submits
