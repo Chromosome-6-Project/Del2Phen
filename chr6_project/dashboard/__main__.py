@@ -118,7 +118,7 @@ from chr6_project.dashboard.dashboard_general import head_layout
 #     expand_hpos=False
 #     )
 
-comparison, ontology, termset = analyze_online(
+comparison, _, ontology, termset = analyze_online(
     username=sys.argv[1], password=sys.argv[2], drop_list_file=sys.argv[3],
     hpo_termset_yaml=get_default_termset_yaml_path()
     )
