@@ -12,7 +12,7 @@ setup(
               "chr6_project.dashboard",
               "chr6_project.molgenis_import",
               "chr6_project.resources"],
-    package_dir={"": "chr6_project"},
+    # package_dir={"": "chr6_project"},
     package_data={"resources": ["*"], "dashboard.assets": ["*"]},
     python_requires=">=3.9",
     install_requires=[
