@@ -1,0 +1,47 @@
+---
+single:
+  - HP:0000077  # Abnormality of the kidney
+  - HP:0000164  # Abnormality of the dentition
+  - HP:0000175  # Cleft palate
+  - HP:0000238  # Hydrocephalus
+  - HP:0000252  # Microcephaly
+  - HP:0000256  # Macrocephaly
+  - HP:0000316  # Hypertelorism
+  - HP:0000356  # Abnormality of the outer ear
+  - HP:0000365  # Hearing impairment
+  - HP:0000639  # Nystagmus
+  - HP:0001250  # Seizure
+  - HP:0001251  # Ataxia
+  - HP:0001252  # Muscular hypotonia
+  - HP:0001273  # Abnormal corpus callosum morphology
+  - HP:0001317  # Abnormal cerebellum morphology
+  - HP:0001382  # Joint hypermobility
+  - HP:0001511  # Intrauterine growth retardation
+  - HP:0001627  # Abnormal heart morphology
+  - HP:0002019  # Constipation
+  - HP:0002020  # Gastroesophageal reflux
+  - HP:0002360  # Sleep disturbance
+  - HP:0002719  # Recurrent infections
+  - HP:0003474  # Sensory impairment
+  - HP:0004322  # Short stature
+  - HP:0005656  # Positional foot deformity
+  - HP:0010674  # Abnormality of the curvature of the vertebral column
+  - HP:0010832  # Abnormality of pain sensation
+  - HP:0010866  # Abdominal wall defect
+  # - HP:0011470  # Nasogastric tube feeding in infancy
+  # - HP:0011471  # Gastrostomy tube feeding in infancy
+  # - HP:0012758  # Neurodevelopmental delay
+
+custom:
+  HP:0011470:+1:
+    name: Tube feeding in infancy
+    rule: "any"
+    members:
+      - HP:0011470  # Nasogastric tube feeding in infancy
+      - HP:0011471  # Gastrostomy tube feeding in infancy
+
+  HP:-0012758:
+    name: Normal neurodevelopment
+    rule: "none"
+    members:
+      - HP:0012758  # Neurodevelopmental delay
