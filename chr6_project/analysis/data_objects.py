@@ -241,6 +241,12 @@ class PatientDatabase:
         cnv_mean = mean([(cnv.range.start + cnv.range.stop)/2 for cnv in self.cnvs[chromosome]])
         return cnv_mean
 
+    def remove_patients_by_cnv_type(self, cnv_type):
+        patients = {patient.id: patient for patient in self
+                    if cnv_type not in [cnv.change for cnv in patient.cnvs]}
+        patients = PatientDatabase(patients)
+        return patients
+
     def add_predictions(self, predictions):
         for patient in self:
             patient.predictions = predictions[patient.id]
@@ -367,9 +373,7 @@ class Patient:
 
     def __repr__(self):
         """Construct string representation."""
-        return (f"ID: {self.id}\n"
-                f"  Genotypes: {len(self.genotypes)}\n"
-                f"  Phenotypes: {len(self.phenotypes)}")
+        return f"Patient(id={self.id})"
 
     def extract_cnvs(self):
         """Pull CNV data from genotype information."""

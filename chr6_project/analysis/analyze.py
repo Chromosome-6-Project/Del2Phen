@@ -317,6 +317,9 @@ def analyze_online(username, password, drop_list_file=None, hpo_termset_yaml=Non
     print("Building patient database...")
     patients = PatientDatabase(patients)
 
+    print("Filtering patients with duplications...")
+    patients = patients.remove_patients_by_cnv_type("Duplication x3")
+
     print("Comparing patients...")
     comparison = ComparisonTable(patients)
 
