@@ -159,6 +159,7 @@ app.layout = dbc.Container(fluid=True, children=[
 
 
 @app.callback(Output("connectivity-bargraph", "figure"),
+              Output("size-vs-hi", "figure"),
               Input("length-slider", "value"),
               Input("loci-slider", "value"),
               Input("gene-slider", "value"),
@@ -177,20 +178,21 @@ def update_connectivity_plot(length_similarity, loci_similarity, gene_similarity
         hpo_similarity=0,
         min_size=group_size_threshold
         )
-    return connectivity
-
-
-@app.callback(Output("size-vs-hi", "figure"),
-              Input("dom-gene-switch", "value"),
-              Input("group-size-slider", "value"))
-def update_size_vs_hi(dom_gene_match, group_size_threshold):
     size_vs_hi = plotting.plot_min_degree_count_vs_hi_score(
         comparison=comparison,
         hi_scores=linspace(0, 1, 11),
         min_degrees=[group_size_threshold],
         dom_gene_match=dom_gene_match
         )
-    return size_vs_hi
+    return connectivity, size_vs_hi
+
+
+# @app.callback(Output("size-vs-hi", "figure"),
+#               Input("dom-gene-switch", "value"),
+#               Input("group-size-slider", "value"))
+# def update_size_vs_hi(dom_gene_match, group_size_threshold):
+#
+#     return size_vs_hi
 
 
 @app.callback(Output("homogeneity-histogram", "figure"),
