@@ -15,7 +15,7 @@ from chr6_project.analysis.phenotype_prediction import PredictionDatabase
 from chr6_project.dashboard.dashboard_general import head_layout
 
 
-comparison, _, ontology, termset = analyze_online(
+comparison, geneset, ontology, termset = analyze_online(
     username=sys.argv[1], password=sys.argv[2], drop_list_file=sys.argv[3],
     hpo_termset_yaml=get_default_termset_yaml_path()
     )
@@ -250,7 +250,8 @@ def update_predictions(length_similarity, loci_similarity, gene_similarity,
         )
     precision_plot = plotting.plot_precision_stats(prediction_db, comparison.patient_db,
                                                    list(termset), rel_threshold, abs_threshold,
-                                                   use_adjusted_frequency, group_size_threshold)
+                                                   use_adjusted_frequency, group_size_threshold,
+                                                   geneset)
     prediction_ids = sorted(prediction_db.predictions.keys())
     return precision_plot, prediction_ids
 
