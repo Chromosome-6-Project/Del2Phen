@@ -236,7 +236,7 @@ class Gene:
         return hash(string)
 
     def is_haploinsufficient(self, pLI_threshold=0.9, HI_threshold=10,
-                             phaplo_threshold=0.86, mode="any"):
+                             phaplo_threshold=0.86, mode="confirm"):
         """Check if gene has sufficient pLI, HI, or pHaplo score."""
         return is_haploinsufficient(self, pLI_threshold, HI_threshold,
                                     phaplo_threshold, mode)
