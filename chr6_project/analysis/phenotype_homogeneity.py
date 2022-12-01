@@ -92,6 +92,7 @@ class HomogeneityDatabase:
         self.patient_group_prevalences = patient_group_prevalences
         self.phenotypes = {pheno for group_prev in self.patient_group_prevalences.values()
                            for pheno in group_prev.phenotypes}
+        self.size = len(self.patient_group_prevalences)
 
     def sorted_by_chromosome(self, chromosome):
         sorted_prevs = sorted(self.patient_group_prevalences.values(),

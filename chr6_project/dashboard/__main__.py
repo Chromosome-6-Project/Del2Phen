@@ -1,5 +1,4 @@
 
-from math import log10
 import sys
 
 from dash import Dash, dash_table, html, dcc, Input, Output, State
@@ -7,116 +6,14 @@ from dash.exceptions import PreventUpdate
 import dash_bootstrap_components as dbc
 from numpy import linspace
 import plotly.express as px
-import plotly.graph_objects as go
 
+from chr6_project.analysis import network, plotting
 from chr6_project.analysis.analyze import analyze_online
 from chr6_project.analysis.hpo import get_default_termset_yaml_path
-from chr6_project.analysis import network
-# from chr6_project.analysis.phenotype_homogeneity import phenotype_homo_test
-from chr6_project.analysis.plotting import plot_precision_stats, ph_histogram
 from chr6_project.analysis.phenotype_prediction import PredictionDatabase
 
 from chr6_project.dashboard.dashboard_general import head_layout
 
-# @callback(
-#     Output("login_modal", "is_open"),
-#     Output("username_input", "value"),
-#     Output("password_input", "value"),
-#     Input("open_login", "n_clicks"),
-#     State("login_modal", "is_open"),
-#     )
-# def toggle_modal(n1, is_open):
-#     if n1 == 0:
-#         raise PreventUpdate
-#     return not is_open, "", ""
-#
-#
-# @callback(
-#     Output("login_div", "style"),
-#     Output("logout_div", "style"),
-#     Input("user_credentials", "resources"),
-#     Input("logout_button", "n_clicks"),
-#     )
-# def toggle_login_buttons(creds, logout):
-#     if creds == {} and logout == 0:
-#         raise PreventUpdate
-#     if creds != {}:
-#         return {'display': 'none'}, {'display': 'block'}
-#     return {'display': 'block'}, {'display': 'none'}
-#
-#
-# @callback(
-#     Output("user_credentials", "resources"),
-#     Output("open_login", "n_clicks"),
-#     Output("username_input", "invalid"),
-#     Output("password_input", "invalid"),
-#     Input("login_button", "n_clicks"),
-#     Input("password_input", "n_submit"),
-#     Input("logout_button", "n_clicks"),
-#     State("username_input", "value"),
-#     State("password_input", "value"),
-#     State("open_login", "n_clicks")
-#     )
-# def update_credentials(login_clicks, submits, logouts, user, password, click_count):
-#     if login_clicks == 0 and submits == 0 and click_count == 0 and logouts == 0:
-#         raise PreventUpdate
-#     if ctx.triggered_id == "logout_button":
-#         return {}, 0, False, False
-#     credentials = {"hostname": "c-head", "username": user, "password": password}
-#     if not test_connection(credentials):
-#         return {}, 0, True, True
-#     click_count = click_count + 1
-#     return credentials, click_count, False, False
-#
-#
-# @callback(
-#     Output("historical_coverage", "resources"),
-#     Output("historical_insert_len", "resources"),
-#     Input("user_credentials", "resources"),
-#     )
-# def fetch_historical_info(login):
-#     if login == {}:
-#         return {}, {}
-#     agg = "/home/tmedina/QC_Project/aggregate/"
-#     hist_coverage = stream_json_table(login, agg + "Clinical_2022_WGS_Germline_aggregate_coverage.binned.json.gz")
-#     hist_insert = stream_tsv_table(login, agg + "Clinical_2022_DNA_aggregate_insert_len.tsv.gz")
-#     hist_insert = hist_insert.to_json()
-#     return hist_coverage, hist_insert
-#
-#
-# @callback(
-#     Output(f"navbar-collapse", "is_open"),
-#     Input(f"navbar-toggler", "n_clicks"),
-#     State(f"navbar-collapse", "is_open"),
-#     )
-# def toggle_navbar_collapse(n, is_open):
-#     if n:
-#         return not is_open
-#     return is_open
-#
-#
-# @callback(
-#     Output("current_page_layout", "children"),
-#     Input("url", "pathname")
-#     )
-# def display_page(pathname):
-#     if pathname == "/case-explorer":
-#         return case_explorer_layout
-#     elif pathname == '/historical-trends':
-#         return historical_trends_layout
-#     else:
-#         return case_explorer_layout
-
-# c6_dir = "/home/tyler/Documents/Chr6_docs/"
-# comparison, _, ontology, termset = analyze(
-#     genotypes=f"{c6_dir}/PatientData/2022-Oct-25/c6_array_2022-10-25_18_58_17.csv",
-#     phenotypes=f"{c6_dir}/PatientData/2022-Oct-25/c6_questionnaire_2022-10-25_19_00_59.csv",
-#     patient_hpo=f"{c6_dir}/PatientData/2022-Oct-25/c6_research_patients_2022-10-25_19_49_06.csv",
-#     geneset_gtf=f"{c6_dir}/GeneSets/hg19.ensGene.chr6.gtf.gz",
-#     drop_list_file=f"{c6_dir}/PatientData/drop_list.txt",
-#     hpo_termset_yaml=f"{c6_dir}/Phenotype_Homogeneity/selected_phenotypes_hpos.yaml",
-#     expand_hpos=False
-#     )
 
 comparison, _, ontology, termset = analyze_online(
     username=sys.argv[1], password=sys.argv[2], drop_list_file=sys.argv[3],
@@ -210,10 +107,12 @@ app.layout = dbc.Container(fluid=True, children=[
     # Panes
     dcc.Tabs(children=[
         dcc.Tab(label="Network", children=[
-            dcc.Graph(id="connectivity-bargraph")
+            dcc.Graph(id="connectivity-bargraph"),
+            dcc.Graph(id="size-vs-hi"),
             ]),
         dcc.Tab(label="Homogeneity", children=[
-            dcc.Graph(id="homogeneity-graph"),
+            dcc.Graph(id="homogeneity-histogram"),
+            dcc.Graph(id="homogeneity-revcum"),
             dcc.Graph(id="homogeneity-heatmap")
             ]),
         dcc.Tab(label="Predictions", children=[
@@ -224,6 +123,7 @@ app.layout = dbc.Container(fluid=True, children=[
                     ]),
                 dcc.Tab(label="Patients", children=[
                     html.Br(),
+                    html.Label("Select patient:"),
                     dcc.Dropdown(id="prediction-selector", options=patient_ids),
                     html.Br(),
                     html.Div(id="prediction-table", children=[dash_table.DataTable()]),
@@ -266,61 +166,35 @@ app.layout = dbc.Container(fluid=True, children=[
               Input("dom-gene-switch", "value"),
               Input("group-size-slider", "value"))
 def update_connectivity_plot(length_similarity, loci_similarity, gene_similarity,
-                             hi_gene_similarity, dom_gene_match, group_size_thresholds):
-    filtered_graph = network.filter_graph_edges(nx_graph,
-                                                length_similarity,
-                                                loci_similarity,
-                                                gene_similarity,
-                                                hi_gene_similarity,
-                                                dom_gene_match,
-                                                hpo_similarity=0)
-    subsizes = network.get_subnet_sizes(filtered_graph)
-    subsize_gt_5 = network.count_subnets_over_size_n(filtered_graph,
-                                                     group_size_thresholds)
-    subsize_gt_5 = (f"Clusters with at least {group_size_thresholds} individuals: "
-                    f"{subsize_gt_5:>5}")
-
-    links = sorted(list(network.get_node_degrees(filtered_graph).values()))
-    links_gt_5 = network.count_nodes_over_n_degree(filtered_graph,
-                                                   group_size_thresholds)
-    links_gt_5 = (f"Individuals with at least {group_size_thresholds} links:    "
-                  f"{links_gt_5:>5}")
-
-    params = dict(xbins=dict(start=0, end=500, size=1),
-                  autobinx=False)
-
-    fig1 = go.Figure()
-    fig1.add_trace(
-        trace=go.Histogram(
-            x=subsizes,
-            name="Subnet Sizes",
-            hovertemplate="Subnet Size: %{x}<br>Count: %{y}<extra></extra>",
-            **params
-            )
+                             hi_gene_similarity, dom_gene_match, group_size_threshold):
+    connectivity = plotting.connectivity_histogram(
+        comparison,
+        length_similarity,
+        loci_similarity,
+        gene_similarity,
+        hi_gene_similarity,
+        dom_gene_match,
+        hpo_similarity=0,
+        min_size=group_size_threshold
         )
-    fig1.add_trace(
-        trace=go.Histogram(
-            x=links,
-            name="Node Degrees",
-            hovertemplate="Links: %{x}<br>Count: %{y}<extra></extra>",
-            **params
-            )
+    return connectivity
+
+
+@app.callback(Output("size-vs-hi", "figure"),
+              Input("dom-gene-switch", "value"),
+              Input("group-size-slider", "value"))
+def update_size_vs_hi(dom_gene_match, group_size_threshold):
+    size_vs_hi = plotting.plot_min_degree_count_vs_hi_score(
+        comparison=comparison,
+        hi_scores=linspace(0, 1, 11),
+        min_degrees=[group_size_threshold],
+        dom_gene_match=dom_gene_match
         )
-    fig1.update_layout(
-        transition_duration=500,
-        title_text="Distribution of Subnet Sizes and Node Degrees",
-        xaxis_title_text="Size",
-        yaxis_title_text="Count",
-        legend_orientation="h"
-        )
-    fig1.update_yaxes(type="log", dtick=log10(2))
-    fig1.add_annotation(text=subsize_gt_5 + "<br>" + links_gt_5, showarrow=False,
-                        align="right", xref="paper", yref="paper", x=0.95, y=0.95)
-
-    return fig1
+    return size_vs_hi
 
 
-@app.callback(Output("homogeneity-graph", "figure"),
+@app.callback(Output("homogeneity-histogram", "figure"),
+              Output("homogeneity-revcum", "figure"),
               Output("homogeneity-heatmap", "figure"),
               Input("length-slider", "value"),
               Input("loci-slider", "value"),
@@ -337,15 +211,21 @@ def update_homogeneity_figures(length_similarity, loci_similarity, gene_similari
         list(termset), length_similarity, loci_similarity, gene_similarity,
         hi_gene_similarity, dom_gene_match, hpo_similarity=0
         )
-    histogram = ph_histogram(existing_ph_database=ph_database,
-                             rel_threshold=rel_threshold,
-                             abs_threshold=abs_threshold,
-                             min_size=group_size_threshold+1)
+    histogram = plotting.ph_histogram(existing_ph_database=ph_database,
+                                      rel_threshold=rel_threshold,
+                                      abs_threshold=abs_threshold,
+                                      min_size=group_size_threshold+1)
+
+    hi_scores = [i.round(2)
+                 for i in linspace(hi_gene_similarity-0.15, hi_gene_similarity+0.15, 7)
+                 if i.round(2) > 0]
+    revcum = plotting.patients_per_ph(comparison, termset, hi_scores, dom_gene_match,
+                                      rel_threshold, abs_threshold, group_size_threshold)
 
     table = ph_database.make_phenotype_homogeneity_table(rel_threshold, abs_threshold,
                                                          min_size=group_size_threshold+1)
     heatmap = px.imshow(table, aspect="auto", height=1000)
-    return histogram, heatmap
+    return histogram, revcum, heatmap
 
 
 @app.callback(
@@ -368,9 +248,9 @@ def update_predictions(length_similarity, loci_similarity, gene_similarity,
         length_similarity, loci_similarity, gene_similarity,
         hi_gene_similarity, dom_gene_match,
         )
-    precision_plot = plot_precision_stats(prediction_db, comparison.patient_db,
-                                          list(termset), rel_threshold, abs_threshold,
-                                          use_adjusted_frequency, group_size_threshold)
+    precision_plot = plotting.plot_precision_stats(prediction_db, comparison.patient_db,
+                                                   list(termset), rel_threshold, abs_threshold,
+                                                   use_adjusted_frequency, group_size_threshold)
     prediction_ids = sorted(prediction_db.predictions.keys())
     return precision_plot, prediction_ids
 

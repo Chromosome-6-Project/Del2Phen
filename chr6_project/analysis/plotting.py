@@ -5,6 +5,8 @@
 @author: T.D. Medina
 """
 
+from math import log10
+
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
@@ -210,12 +212,56 @@ def node_degree_histogram(comparison_table, hi_sim=0.75):
     return fig
 
 
+def connectivity_histogram(comparison, length_similarity=0, loci_similarity=0,
+                           gene_similarity=0, hi_gene_similarity=0, dom_gene_match=True,
+                           hpo_similarity=0, min_size=5):
+    nx_graph = network.make_nx_graph_from_comparisons(comparison)
+    filtered_graph = network.filter_graph_edges(nx_graph,
+                                                length_similarity,
+                                                loci_similarity,
+                                                gene_similarity,
+                                                hi_gene_similarity,
+                                                dom_gene_match,
+                                                hpo_similarity)
+    subsizes = network.get_subnet_sizes(filtered_graph)
+    subsize_gt_5 = network.count_subnets_over_size_n(filtered_graph, min_size)
+    subsize_gt_5 = f"Clusters with at least {min_size} individuals: {subsize_gt_5:>5}"
+
+    links = sorted(list(network.get_node_degrees(filtered_graph).values()))
+    links_gt_5 = network.count_nodes_over_n_degree(filtered_graph, min_size)
+    links_gt_5 = f"Individuals with at least {min_size} links:    {links_gt_5:>5}"
+
+    params = dict(xbins=dict(start=0, end=500, size=1), autobinx=False)
+
+    fig = go.Figure()
+    fig.add_trace(trace=go.Histogram(
+        x=subsizes, name="Subnet Sizes",
+        hovertemplate="Subnet Size: %{x}<br>Count: %{y}<extra></extra>", **params)
+        )
+    fig.add_trace(trace=go.Histogram(
+        x=links, name="Node Degrees",
+        hovertemplate="Links: %{x}<br>Count: %{y}<extra></extra>", **params)
+        )
+
+    fig.update_layout(
+        transition_duration=500,
+        title_text="Distribution of Subnet Sizes and Node Degrees",
+        xaxis_title_text="Size",
+        yaxis_title_text="Count",
+        legend_orientation="h"
+        )
+    fig.update_yaxes(type="log", dtick=log10(2))
+    fig.add_annotation(text=subsize_gt_5 + "<br>" + links_gt_5, showarrow=False,
+                       align="right", xref="paper", yref="paper", x=0.95, y=0.95)
+    return fig
+
+
 def plot_median_degree_vs_hi_similarity(comparison_table):
     nx_graph = network.make_nx_graph_from_comparisons(comparison_table)
     degrees = []
     xs = np.linspace(0, 1, 101)
     for x in xs:
-        filtered_graph = network.filter_graph_edges(nx_graph, hi_gene_sim_threshold=x)
+        filtered_graph = network.filter_graph_edges(nx_graph, hi_gene_similarity=x)
         median_degrees = list(network.get_node_degrees(filtered_graph).values())
         median_degrees = np.median(median_degrees)
         degrees.append(median_degrees)
@@ -239,9 +285,13 @@ def plot_min_degree_count_vs_hi_score(comparison, hi_scores, min_degrees,
             degree_count = network.count_nodes_over_n_degree(filtered, min_degree)
             points.append(degree_count)
         fig.add_trace(go.Scatter(x=hi_scores, y=points, name=f"n ≥ {min_degree}"))
+    if len(min_degrees) == 1:
+        n = min_degrees[0]
+    else:
+        n = "n"
     fig.update_layout(title="Number of patients with minimum connections vs. minHIGSS",
                       xaxis_title="Minimum HI gene similarity score",
-                      yaxis_title="Number of patients with ≥ n connections",
+                      yaxis_title=f"Number of patients with ≥ {n} connections",
                       legend_title="Connection Threshold (n)",
                       hovermode="x unified")
     return fig
@@ -294,7 +344,7 @@ def patients_per_ph(comparison, phenotypes,
                     hi_scores=(0.5, 0.6, 0.7, 0.75, 0.8, 0.9),
                     dom_gene_match=True,
                     rel_threshold=0.2, abs_threshold=2, min_size=5,
-                    raw_patient_count=False, add_error=False):
+                    raw_patient_count=False):
     thresh = (rel_threshold, abs_threshold)
     count_name = "Fraction"
     hovertemplate = "PH ≥ %{x}: %{y:.2%} (%{customdata})"
@@ -303,14 +353,14 @@ def patients_per_ph(comparison, phenotypes,
         hovertemplate = "PH ≥ %{x}: %{y} (%{customdata:.2%})"
     fig = go.Figure()
     for n, hi_score in enumerate(sorted(hi_scores, reverse=True)):
-        group_phs = comparison.test_all_homogeneities(phenotypes=phenotypes,
-                                                      hi_gene_similarity=hi_score,
-                                                      dom_gene_match=dom_gene_match)
-        data = [group_ph.calculate_homogeneity(*thresh)
-                for group_ph in group_phs.values() if group_ph.group_size >= min_size]
-        data = [sum([x >= i for x in data]) for i in np.linspace(0, 1, 51)]
-        data_len = len(group_phs)
-        customdata = [point/data_len for point in data]
+        group_phs = comparison.compare_all_patient_pheno_prevalences(
+            phenotypes=phenotypes,
+            hi_gene_similarity=hi_score,
+            dom_gene_match=dom_gene_match
+            )
+        data, _ = group_phs.calculate_all_homogeneities(*thresh, min_size)
+        data = [sum([x >= i for x in data.values()]) for i in np.linspace(0, 1, 51)]
+        customdata = [point/group_phs.size for point in data]
         if not raw_patient_count:
             data, customdata = customdata, data
         fig.add_trace(go.Scatter(x=np.linspace(0, 1, 51), y=data,
@@ -491,20 +541,32 @@ def patients_per_ph_by_area(comparison, phenotypes,
 # %% Phenotype prediction plots
 def plot_precision_stats(prediction_database, patient_database, phenotypes=None,
                          rel_threshold=0.2, abs_threshold=2, use_adjusted_frequency=True,
-                         group_size_threshold=5):
-    hovertemplate = "%{customdata}<br>Pos: %{x}<br>Size: %{marker.size}<br>Value: %{y}"
+                         group_size_threshold=5, geneset=None):
+
     params = (phenotypes, rel_threshold, abs_threshold, group_size_threshold,
               use_adjusted_frequency)
+
     prediction_stats = prediction_database.calculate_individual_precision(*params)
     positions = [patient_database[patient].get_median_cnv_position("6")
                  for patient in prediction_stats]
     sizes = [prediction_database.predictions[patient].patient_group.size
              for patient in prediction_stats]
+
+    # if color_de_patients:
+    #     de_patients = [patient.id for patient in patient_database
+    #                    if patient.all_dominant_genes()
+    #                    and patient.id in prediction_stats]
+
     prediction_stats = pd.DataFrame.from_dict(prediction_stats, orient="index")
     prediction_stats["Position"] = positions
     prediction_stats["Size"] = sizes
     prediction_stats = prediction_stats.sort_values("Position")
-    fig = go.Figure()
+
+    if geneset:
+        fig = plot_genes(geneset, "6", 0, 1)
+    else:
+        fig = go.Figure()
+    hovertemplate = "%{customdata}<br>Pos: %{x}<br>Size: %{marker.size}<br>Value: %{y}"
     for stat in prediction_stats.columns[:-2]:
         fig.add_trace(go.Scatter(x=prediction_stats["Position"],
                                  y=prediction_stats[stat],
@@ -512,8 +574,71 @@ def plot_precision_stats(prediction_database, patient_database, phenotypes=None,
                                  mode="markers",
                                  marker=dict(size=prediction_stats["Size"]),
                                  customdata=list(prediction_stats.index),
-                                 hovertemplate=hovertemplate))
+                                 hovertemplate=hovertemplate,
+                                 legendgroup=stat))
+        # if color_de_patients:
+        #     fig.add_trace(go.Scatter(x=prediction_stats.loc[de_patients]["Position"],
+        #                              y=prediction_stats.loc[de_patients][stat],
+        #                              name=f"{stat}_DE",
+        #                              mode="markers",
+        #                              marker=dict(size=prediction_stats.loc[de_patients]["Size"],
+        #                                          color="rgba(0,0,0,0)",
+        #                                          line=dict(color="red", width=2)),
+        #                              showlegend=False,
+        #                              legendgroup=stat))
+
     fig.update_layout(title="Phenotype Prediction Precision Metrics",
                       xaxis_title="Chromosome 6 Position",
                       yaxis_title="Precision Value")
+    return fig
+
+
+def plot_genes(geneset, chromosome):
+    cats = {0: ["blue", "Regular", "legendonly"],
+            1: ["orange", "HI", True],
+            2: ["red", "DE", True]}
+    legend = [True, True, True]
+    fig = go.Figure()
+    for i, gene in enumerate(geneset.chromosomes[chromosome].values()):
+        cat = max(gene.dominant*2, gene.is_haploinsufficient())
+        color = cats[cat][0]
+        fig.add_trace(go.Scatter(
+            x=[gene.start, gene.end, gene.end, gene.start, gene.start],
+            y=[0, 0, 1, 1, 0],
+            fill="toself",
+            mode="lines",
+            line_color=color,
+            legendgroup=cats[cat][1],
+            name=f"{cats[cat][1]}",
+            showlegend=legend[cat],
+            visible=cats[cat][2]
+            ))
+        legend[cat] = False
+    return fig
+
+
+def plot_genes(geneset, chromosome, y_min=0.0, y_max=1.0):
+    cats = {0: ["blue", "Regular", "legendonly"],
+            1: ["orange", "HI", True],
+            2: ["red", "DE", True]}
+
+    dom_genes = [gene for gene in geneset.chromosomes[chromosome].values()
+                 if gene.dominant]
+    hi_genes = [gene for gene in geneset.chromosomes[chromosome].values()
+                if gene.is_haploinsufficient()]
+    other_genes = set(geneset.chromosomes[chromosome].values()) - set(dom_genes) - set(hi_genes)
+
+    fig = go.Figure()
+    for i, genes in enumerate([other_genes, hi_genes, dom_genes]):
+        xs = [pos for gene in genes
+              for pos in [gene.start, gene.end, gene.end, gene.start, gene.start, None]]
+        ys = [pos for _ in genes
+              for pos in [y_min, y_min, y_max, y_max, y_min, None]]
+        fig.add_trace(go.Scatter(
+            x=xs, y=ys, fill="toself", mode="lines",
+            line_color=cats[i][0],
+            visible=cats[i][2],
+            name=cats[i][1],
+            opacity=0.5
+            ))
     return fig
