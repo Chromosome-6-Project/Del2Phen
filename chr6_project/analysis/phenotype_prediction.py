@@ -135,8 +135,8 @@ class PredictionDatabase:
     def calculate_individual_precision(self, phenotypes=None, rel_threshold=0.2,
                                        abs_threshold=2, use_adjusted_frequency=True,
                                        group_size_threshold=5):
-        params = (phenotypes, rel_threshold, abs_threshold, group_size_threshold,
-                  use_adjusted_frequency)
+        params = (phenotypes, rel_threshold, abs_threshold, use_adjusted_frequency,
+                  group_size_threshold)
         stat_names = ("Sensitivity", "Specificity", "PPV", "NPV")
         precision_stats = {}
         for patient, mat in self.make_individual_confusion_matrices(*params).items():

@@ -593,6 +593,45 @@ def plot_precision_stats(prediction_database, patient_database, phenotypes=None,
     return fig
 
 
+def minimum_precision(comparison, phenotypes=None,
+                      rel_threshold=0.2, abs_threshold=2, use_adjusted_frequency=True,
+                      group_size_threshold=5, hi_scores=(0.5, 0.6, 0.7, 0.75, 0.8, 0.9),
+                      dom_gene_match=True):
+    params = (phenotypes, rel_threshold, abs_threshold, use_adjusted_frequency,
+              group_size_threshold)
+
+    fig = go.Figure()
+
+    for i, hi_score in enumerate(hi_scores):
+        prediction_database = comparison.test_all_phenotype_predictions(
+            hi_gene_similarity=hi_score,
+            dom_gene_match=dom_gene_match
+            )
+        stats = prediction_database.calculate_individual_precision(*params)
+        stats = pd.DataFrame.from_dict(stats, orient="index")
+
+        size = len(stats)
+
+        ppv = [sum(stats["PPV"] >= j)/size for j in np.linspace(0, 1, 51)]
+        sensitivity = [sum(stats["Sensitivity"] >= j)/size for j in np.linspace(0, 1, 51)]
+
+        fig.add_trace(go.Scatter(x=np.linspace(0, 1, 51), y=ppv, mode="lines",
+                                 line=dict(color=GA_COLORS[i]),
+                                 name=f"minHIGGS ≥ {hi_score:.2}", legendgroup="PPV",
+                                 legendgrouptitle_text="PPV"))
+        fig.add_trace(go.Scatter(x=np.linspace(0, 1, 51), y=sensitivity, mode="lines",
+                                 name=f"minHIGGS ≥ {hi_score:.2}",
+                                 line=dict(dash="dot", color=GA_COLORS[i]),
+                                 legendgroup="Sensitivity",
+                                 legendgrouptitle_text="Sensitivity"))
+    fig.update_layout(title=f"Fraction of Patients with Minimum Prediction Precision,"
+                            f" for groups ≥ {group_size_threshold}",
+                      xaxis_title="Statistic Value",
+                      yaxis_title="Fraction of patients")
+    fig.update_layout(legend=dict(groupclick="toggleitem"))
+    return fig
+
+
 def plot_genes(geneset, chromosome):
     cats = {0: ["blue", "Regular", "legendonly"],
             1: ["orange", "HI", True],
