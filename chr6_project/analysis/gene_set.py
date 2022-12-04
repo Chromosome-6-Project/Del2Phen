@@ -566,7 +566,7 @@ def symbol_relookup_missing(mygene_lookup, mygene_instance):
 
 # %% Helper Functions
 def is_haploinsufficient(gene, pLI_threshold=0.9, HI_threshold=10,
-                         phaplo_threshold=0.86, mode="any"):
+                         phaplo_threshold=0.86, mode="confirm"):
     """Check if gene has sufficiently low pLI or HI score."""
     pli_pass = gene.pli_score is not None and gene.pli_score >= pLI_threshold
     hi_pass = gene.hi_score is not None and gene.hi_score <= HI_threshold
