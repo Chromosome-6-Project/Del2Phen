@@ -120,6 +120,7 @@ app.layout = dbc.Container(fluid=True, children=[
             dcc.Tabs(children=[
                 dcc.Tab(label="Summary", children=[
                     dcc.Graph(id="precision-stats-graph"),
+                    dcc.Graph(id="min-precision-graph")
                     ]),
                 dcc.Tab(label="Patients", children=[
                     html.Br(),
@@ -232,6 +233,7 @@ def update_homogeneity_figures(length_similarity, loci_similarity, gene_similari
 
 @app.callback(
     Output("precision-stats-graph", "figure"),
+    Output("min-precision-graph", "figure"),
     Output("prediction-selector", "options"),
     Input("length-slider", "value"),
     Input("loci-slider", "value"),
@@ -254,8 +256,16 @@ def update_predictions(length_similarity, loci_similarity, gene_similarity,
                                                    list(termset), rel_threshold, abs_threshold,
                                                    use_adjusted_frequency, group_size_threshold,
                                                    geneset)
+    hi_scores = [i.round(2)
+                 for i in linspace(hi_gene_similarity - 0.15, hi_gene_similarity + 0.15, 7)
+                 if i.round(2) > 0]
+    min_precision_plot = plotting.minimum_precision(comparison, list(termset),
+                                                    rel_threshold, abs_threshold,
+                                                    use_adjusted_frequency,
+                                                    group_size_threshold, hi_scores,
+                                                    dom_gene_match)
     prediction_ids = sorted(prediction_db.predictions.keys())
-    return precision_plot, prediction_ids
+    return precision_plot, min_precision_plot, prediction_ids
 
 
 @app.callback(
