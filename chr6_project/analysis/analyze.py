@@ -127,12 +127,14 @@ class DataManager:
     def make_patients(genotypes, phenotypes, geneset=None, hpos=None,
                       ontology=None):
         """Construct Patient objects from data."""
+        if isinstance(phenotypes, dict):
+            phenotypes = list(phenotypes.values())
         subjects = ({record["owner"] for record in genotypes}
-                    | {record["id"] for record in phenotypes.values()})
+                    | {record["id"] for record in phenotypes})
         patients = {subject: Patient(subject) for subject in subjects}
         for genotype in genotypes:
             patients[genotype["owner"]].genotypes.append(genotype)
-        for phenotype in phenotypes.values():
+        for phenotype in phenotypes:
             patients[phenotype["id"]].phenotypes.append(phenotype)
         if geneset:
             for patient in patients.values():
@@ -213,9 +215,9 @@ class DataManager:
             name: patient for name, patient in patient_dict.items()
             if all([
                 name not in drop_list,
-                patient.genotypes or not remove_ungenotyped,
-                patient.phenotypes or not remove_unphenotyped,
-                patient.check_if_submitted() or not remove_unsubmitted
+                not remove_ungenotyped or patient.genotypes,
+                not remove_unphenotyped or patient.phenotypes,
+                not remove_unsubmitted or patient.check_if_submitted()
                 ])
             }
         return patients_filtered
