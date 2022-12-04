@@ -222,7 +222,7 @@ def update_homogeneity_figures(length_similarity, loci_similarity, gene_similari
                  for i in linspace(hi_gene_similarity-0.15, hi_gene_similarity+0.15, 7)
                  if i.round(2) > 0]
     revcum = plotting.patients_per_ph(comparison, termset, hi_scores, dom_gene_match,
-                                      rel_threshold, abs_threshold, group_size_threshold)
+                                      rel_threshold, abs_threshold, group_size_threshold+1)
 
     table = ph_database.make_phenotype_homogeneity_table(rel_threshold, abs_threshold,
                                                          min_size=group_size_threshold+1)
