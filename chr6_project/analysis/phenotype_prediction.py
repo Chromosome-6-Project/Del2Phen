@@ -129,7 +129,7 @@ class PredictionDatabase:
         matrices = {
             patient: predict.make_confusion_matrix(*params)
             for patient, predict in self.predictions.items()
-            if predict.patient_group.size > group_size_threshold}
+            if predict.patient_group.size >= group_size_threshold}
         return matrices
 
     def calculate_individual_precision(self, phenotypes=None, rel_threshold=0.2,
