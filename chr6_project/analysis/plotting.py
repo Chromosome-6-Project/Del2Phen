@@ -541,10 +541,10 @@ def patients_per_ph_by_area(comparison, phenotypes,
 # %% Phenotype prediction plots
 def plot_precision_stats(prediction_database, patient_database, phenotypes=None,
                          rel_threshold=0.2, abs_threshold=2, use_adjusted_frequency=True,
-                         group_size_threshold=5, geneset=None):
+                         group_size_threshold=5, geneset=None, color_de_patients=False):
 
-    params = (phenotypes, rel_threshold, abs_threshold, group_size_threshold,
-              use_adjusted_frequency)
+    params = (phenotypes, rel_threshold, abs_threshold, use_adjusted_frequency,
+              group_size_threshold)
 
     prediction_stats = prediction_database.calculate_individual_precision(*params)
     positions = [patient_database[patient].get_median_cnv_position("6")
@@ -552,10 +552,10 @@ def plot_precision_stats(prediction_database, patient_database, phenotypes=None,
     sizes = [prediction_database.predictions[patient].patient_group.size
              for patient in prediction_stats]
 
-    # if color_de_patients:
-    #     de_patients = [patient.id for patient in patient_database
-    #                    if patient.all_dominant_genes()
-    #                    and patient.id in prediction_stats]
+    if color_de_patients:
+        de_patients = [patient.id for patient in patient_database
+                       if patient.all_dominant_genes()
+                       and patient.id in prediction_stats]
 
     prediction_stats = pd.DataFrame.from_dict(prediction_stats, orient="index")
     prediction_stats["Position"] = positions
@@ -576,16 +576,16 @@ def plot_precision_stats(prediction_database, patient_database, phenotypes=None,
                                  customdata=list(prediction_stats.index),
                                  hovertemplate=hovertemplate,
                                  legendgroup=stat))
-        # if color_de_patients:
-        #     fig.add_trace(go.Scatter(x=prediction_stats.loc[de_patients]["Position"],
-        #                              y=prediction_stats.loc[de_patients][stat],
-        #                              name=f"{stat}_DE",
-        #                              mode="markers",
-        #                              marker=dict(size=prediction_stats.loc[de_patients]["Size"],
-        #                                          color="rgba(0,0,0,0)",
-        #                                          line=dict(color="red", width=2)),
-        #                              showlegend=False,
-        #                              legendgroup=stat))
+        if color_de_patients:
+            fig.add_trace(go.Scatter(x=prediction_stats.loc[de_patients]["Position"],
+                                     y=prediction_stats.loc[de_patients][stat],
+                                     name=f"{stat}_DE",
+                                     mode="markers",
+                                     marker=dict(size=prediction_stats.loc[de_patients]["Size"],
+                                                 color="rgba(0,0,0,0)",
+                                                 line=dict(color="red", width=2)),
+                                     showlegend=False,
+                                     legendgroup=stat))
 
     fig.update_layout(title="Phenotype Prediction Precision Metrics",
                       xaxis_title="Chromosome 6 Position",
