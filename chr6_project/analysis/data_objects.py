@@ -155,7 +155,6 @@ class CNV:
         self.chromosome = str(chromosome)
         self.range = range(start, stop + 1)
         self.change = change
-        self.length = len(self.range)
         self.genes = genes
 
     def __len__(self):
@@ -164,8 +163,13 @@ class CNV:
     def __repr__(self):
         """Make string representation of object."""
         string = (
-            f"CNV({self.change}: "
-            f"{self.chromosome}:{self.range.start}-{self.range.stop})"
+            "CNV("
+            f"chromosome='{self.chromosome}', "
+            f"start={self.start}, "
+            f"stop={self.stop}, "
+            f"change='{self.change}', "
+            f"ID='{self.id}'"
+            ")"
             )
         return string
 
@@ -177,6 +181,18 @@ class CNV:
                   f"{self.range.start}-{self.range.stop}\n"
                   f"  Length = {self.length:,} bp")
         return string
+
+    @property
+    def start(self):
+        return self.range.start
+
+    @property
+    def stop(self):
+        return self.range.stop
+
+    @property
+    def length(self):
+        return len(self.range)
 
 
 # TODO: Add a method to add a patient.
@@ -347,6 +363,23 @@ class PatientDatabase:
             writer = csv.DictWriter(outfile, table_values[0].keys())
             writer.writeheader()
             writer.writerows(table_values)
+
+    def filter_by_origin(self, origin):
+        patients = {patient.id: patient for patient in self
+                    if patient.origin == origin}
+        patients = PatientDatabase(patients)
+        return patients
+
+    def split_by_arm(self):
+        p_patients = {}
+        q_patients = {}
+        for patient in self:
+            for cnv in patient.cnvs:
+                if cnv.range.start < 61000000:
+                    p_patients[patient.id] = patient
+                if cnv.range.stop > 61000000:
+                    q_patients[patient.id] = patient
+        return PatientDatabase(p_patients), PatientDatabase(q_patients)
 
 
 class Patient:
