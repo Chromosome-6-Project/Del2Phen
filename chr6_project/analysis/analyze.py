@@ -160,8 +160,8 @@ class DataManager:
                 #     patient.expand_hpo_terms(ontology)
         for patient in patients.values():
             if patient.genotypes:
-                if "origin_info" in patient.genotypes[0]:
-                    patient.origin = patient.genotypes[0]["origin_info"]
+                if "origin info" in patient.genotypes[0]:
+                    patient.origin = patient.genotypes[0]["origin info"]
                 else:
                     patient.origin = None
             patient.convert_birthday_to_datetime()
