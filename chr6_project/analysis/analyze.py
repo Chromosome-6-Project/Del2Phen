@@ -305,6 +305,8 @@ def analyze_online(username, password, drop_list_file=None, hpo_termset_yaml=Non
     genotypes, phenotypes, hpos = import_chr6_data(username, password)
 
     print("Organizing patient HPO terms...")
+    if hpo_termset_yaml is None:
+        hpo_termset_yaml = c6_hpo.get_default_termset_yaml_path()
     ontology, hpos, termset = c6_hpo.make_c6_hpo_online(hpos, hpo_termset_yaml, expand_hpos)
 
     print("Building patient objects...")
