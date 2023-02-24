@@ -343,7 +343,7 @@ def ph_score_vs_group_size(comparison, phenotypes, hi_scores, dom_gene_match=Tru
 def patients_per_ph(comparison, phenotypes,
                     hi_scores=(0.5, 0.6, 0.7, 0.75, 0.8, 0.9),
                     dom_gene_match=True,
-                    rel_threshold=0.2, abs_threshold=2, min_size=5,
+                    rel_threshold=0.2, abs_threshold=2, min_size=6,
                     raw_patient_count=False):
     thresh = (rel_threshold, abs_threshold)
     count_name = "Fraction"
