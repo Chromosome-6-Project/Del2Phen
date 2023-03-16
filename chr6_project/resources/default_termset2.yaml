@@ -21,6 +21,7 @@ single:
   - HP:0000601  # Hypotelorism
   - HP:0000639  # Nystagmus
   - HP:0000722  # Obsessive-compulsive disorder
+  - HP:0000729  # Autistic behavior
   - HP:0000765  # Abnormality of the thorax
   - HP:0000772  # Abnormality of the ribs
   - HP:0000821  # Hypothyroidism
