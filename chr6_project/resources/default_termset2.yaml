@@ -21,7 +21,7 @@ single:
   - HP:0000601  # Hypotelorism
   - HP:0000639  # Nystagmus
   - HP:0000722  # Obsessive-compulsive disorder
-  - HP:0000729  # Autistic behavior
+  # - HP:0000729  # Autistic behavior
   - HP:0000765  # Abnormality of the thorax
   - HP:0000772  # Abnormality of the ribs
   - HP:0000821  # Hypothyroidism
@@ -81,6 +81,9 @@ single:
   - HP:0100277  # Periauricular skin pits
   - HP:0100627  # Displacement of the urethral meatus
   - HP:0410030  # Cleft upper lip
+  - ICD10:F30-39  # Mood [affective] disorders
+  - ICD10:Y40-59  # Adverse drug effects
+  - C6:temp_dysregulation  # Temperature dysregulation
 
 custom:
   HP:0011470:+1:
@@ -123,3 +126,10 @@ custom:
     members:
       - HP:0010535  # Sleep apnea
       - HP:0002360  # Sleep disturbance
+
+  COMBO:autism:
+    name: Autistic behavior or autistic disorder
+    rule: "any"
+    members:
+      - HP:0000729
+      - C6:autistic_disorder
