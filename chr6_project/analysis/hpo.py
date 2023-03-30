@@ -32,7 +32,7 @@ Phenoterm = namedtuple("Phenoterm", ["name", "term_id", "c6_field"])
 def setup_custom_phenotype_data():
     custom_terms = [
         Phenoterm("Mood [affective] disorders", "ICD10:F30-39", "ICD10_F30_F39"),
-        Phenoterm("Drugs causing adverse effects in therapeutic use", "ICD10:Y40-59", "ICD10_Y40_Y59"),
+        Phenoterm("Adverse drug effects", "ICD10:Y40-59", "ICD10_Y40_Y59"),
         Phenoterm("Temperature dysregulation", "C6:temp_dysregulation", "temp_dysregulation"),
         Phenoterm("Autistic disorder", "C6:autistic_disorder", "autistic_disorder")
         ]
@@ -60,7 +60,7 @@ def add_custom_terms(termset_info, ontology):
         ontology.create_term(term_id)
         ontology[term_id].name = term_values["name"]
         # ontology[term_id].members = term_values["members"]
-        ontology[term_id].comment = "Custom term"
+        ontology[term_id].comment = "Rule term"
         members = ",".join(term_values["members"])
         ontology[term_id].definition = Definition(f"{term_values['rule']}|{members}")
 
@@ -117,7 +117,7 @@ def assign_custom_response(custom_term, term_response_dict, ontology):
 
 
 def assign_custom_responses(termset, patient_term_dict, ontology):
-    terms = [term for term in termset if term.comment == "Custom term"]
+    terms = [term for term in termset if term.comment == "Rule term"]
     for patient, term_dict in patient_term_dict.items():
         for term in terms:
             term_dict[term] = assign_custom_response(term, term_dict, ontology)
