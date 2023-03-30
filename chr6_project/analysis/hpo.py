@@ -1,4 +1,5 @@
 
+from collections import namedtuple
 import csv
 import importlib.resources as pkg_resources
 
@@ -23,6 +24,35 @@ def read_custom_termset_yaml(path):
     with open(path) as infile:
         termset_info = yaml.safe_load(infile)
     return termset_info
+
+
+Phenoterm = namedtuple("Phenoterm", ["name", "term_id", "c6_field"])
+
+
+def setup_custom_phenotype_data():
+    custom_terms = [
+        Phenoterm("Mood [affective] disorders", "ICD10:F30-39", "ICD10_F30_F39"),
+        Phenoterm("Drugs causing adverse effects in therapeutic use", "ICD10:Y40-59", "ICD10_Y40_Y59"),
+        Phenoterm("Temperature dysregulation", "C6:temp_dysregulation", "temp_dysregulation"),
+        Phenoterm("Autistic disorder", "C6:autistic_disorder", "autistic_disorder")
+        ]
+    return custom_terms
+
+
+def make_custom_phenotype_terms(ontology, custom_phenotype_terms):
+    for term in custom_phenotype_terms:
+        ontology.create_term(term.term_id)
+        ontology[term.term_id].name = term.name
+        ontology[term.term_id].comment = "Custom term"
+        ontology[term.term_id].definition = Definition(f"c6_field={term.c6_field}")
+
+
+def merge_patient_data(hpo_data, pheno_data, custom_phenoterms):
+    pheno_dict = {pid: {phenoterm.term_id: pheno_data[pid][phenoterm.c6_field]
+                        for phenoterm in custom_phenoterms}
+                  for pid in hpo_data}
+    pheno_data = {pid: hpo_data[pid] | pheno_dict[pid] for pid in pheno_data}
+    return pheno_data
 
 
 def add_custom_terms(termset_info, ontology):
@@ -151,11 +181,20 @@ def make_c6_hpo(patient_hpo_file, custom_termset_yaml=None, recursive_expansion=
     return ontology, patient_hpo_data, termset
 
 
-def make_c6_hpo_online(patient_hpo_data, custom_termset_yaml=None,
+def make_c6_hpo_online(patient_hpo_data, patient_pheno_data, custom_termset_yaml=None,
                        recursive_expansion=False):
     ontology = read_hpo_ontology()
-    patient_hpo_data = {pid: {ontology[hpo_id]: response for hpo_id, response in hpo_data.items()}
+
+    custom_phenotype_terms = setup_custom_phenotype_data()
+    make_custom_phenotype_terms(ontology, custom_phenotype_terms)
+    patient_hpo_data = merge_patient_data(patient_hpo_data,
+                                          patient_pheno_data,
+                                          custom_phenotype_terms)
+
+    patient_hpo_data = {pid: {ontology[hpo_id]: response
+                              for hpo_id, response in hpo_data.items()}
                         for pid, hpo_data in patient_hpo_data.items()}
+
     if recursive_expansion:
         patient_hpo_data = expand_all_patients_hpo_terms(patient_hpo_data)
     if custom_termset_yaml is None:
