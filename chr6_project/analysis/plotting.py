@@ -360,7 +360,8 @@ def patients_per_ph(comparison, phenotypes,
             )
         data, _ = group_phs.calculate_all_homogeneities(*thresh, min_size)
         data = [sum([x >= i for x in data.values()]) for i in np.linspace(0, 1, 51)]
-        customdata = [point/group_phs.size for point in data]
+        # customdata = [point/group_phs.size for point in data]
+        customdata = [point/len(data) for point in data]
         if not raw_patient_count:
             data, customdata = customdata, data
         fig.add_trace(go.Scatter(x=np.linspace(0, 1, 51), y=data,
