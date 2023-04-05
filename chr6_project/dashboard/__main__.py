@@ -181,7 +181,7 @@ def update_connectivity_plot(length_similarity, loci_similarity, gene_similarity
         )
     size_vs_hi = plotting.plot_min_degree_count_vs_hi_score(
         comparison=comparison,
-        hi_scores=linspace(0, 1, 11),
+        hi_scores=[x/100 for x in range(0, 101, 10)],
         min_degrees=[group_size_threshold],
         dom_gene_match=dom_gene_match
         )

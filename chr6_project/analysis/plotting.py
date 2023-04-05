@@ -38,7 +38,7 @@ def hex_to_rgba(hex, alpha):
     rgba = tuple([int(hex[i:i+2], 16) for i in range(1, 6, 2)] + [alpha])
     return rgba
 
-
+# %% Old
 # XXX: Deprecated.
 def make_array(table):
     """Make array from comparisons."""
