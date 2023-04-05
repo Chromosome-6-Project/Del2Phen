@@ -9,15 +9,15 @@ import plotly.express as px
 
 from chr6_project.analysis import network, plotting
 from chr6_project.analysis.analyze import analyze_online
-from chr6_project.analysis.hpo import get_default_termset_yaml_path
 from chr6_project.analysis.phenotype_prediction import PredictionDatabase
 
 from chr6_project.dashboard.dashboard_general import head_layout
 
 
 comparison, geneset, ontology, termset = analyze_online(
-    username=sys.argv[1], password=sys.argv[2], drop_list_file=sys.argv[3],
-    hpo_termset_yaml=get_default_termset_yaml_path()
+    username=sys.argv[1],
+    password=sys.argv[2],
+    drop_list_file=sys.argv[3]
     )
 
 patient_ids = sorted(comparison.patient_db.list_ids())
@@ -107,20 +107,20 @@ app.layout = dbc.Container(fluid=True, children=[
     # Panes
     dcc.Tabs(children=[
         dcc.Tab(label="Network", children=[
-            dcc.Graph(id="connectivity-bargraph"),
-            dcc.Graph(id="size-vs-hi"),
+            dcc.Loading(type="graph", children=[dcc.Graph(id="connectivity-bargraph")]),
+            dcc.Loading(type="graph", children=[dcc.Graph(id="size-vs-hi")]),
             ]),
         dcc.Tab(label="Homogeneity", children=[
-            dcc.Graph(id="homogeneity-histogram"),
-            dcc.Graph(id="homogeneity-revcum"),
-            dcc.Graph(id="homogeneity-heatmap")
+            dcc.Loading(type="graph", children=[dcc.Graph(id="homogeneity-histogram")]),
+            dcc.Loading(type="graph", children=[dcc.Graph(id="homogeneity-revcum")]),
+            dcc.Loading(type="graph", children=[dcc.Graph(id="homogeneity-heatmap")])
             ]),
         dcc.Tab(label="Predictions", children=[
             html.Br(),
             dcc.Tabs(children=[
                 dcc.Tab(label="Summary", children=[
-                    dcc.Graph(id="precision-stats-graph"),
-                    dcc.Graph(id="min-precision-graph")
+                    dcc.Loading(type="graph", children=[dcc.Graph(id="precision-stats-graph")]),
+                    dcc.Loading(type="graph", children=[dcc.Graph(id="min-precision-graph")])
                     ]),
                 dcc.Tab(label="Patients", children=[
                     html.Br(),
