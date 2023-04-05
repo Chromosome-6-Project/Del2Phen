@@ -223,7 +223,8 @@ class Gene:
         for attr in ["gene_id", "gene_name", "source", "seqname", "strand"]:
             attrs = {getattr(trans, attr) for trans in self.transcripts}
             if len(attrs) != 1:
-                raise ValueError(f">1 {attr} detected from transcripts.")
+                raise ValueError(f">1 {attr} detected from transcripts:"
+                                 f"{self.gene_id}.{attr}: {attrs}")
             self.__setattr__(attr, list(attrs)[0])
         start = min([trans.start for trans in self.transcripts])
         end = max([trans.end for trans in self.transcripts])

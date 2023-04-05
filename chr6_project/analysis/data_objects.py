@@ -473,17 +473,12 @@ class Patient:
                      if gene.dominant}
         return dom_genes
 
-    def get_true_hpos(self):
-        trues = {term for term, response in self.hpo.items()
-                 if response == "T"}
-        return trues
-
-    # def expand_hpo_terms(self):
-    #     expanded = {parent for term, response in self.hpo.items()
-    #                 for parent in term.superclasses()
-    #                 if response == "T"}
-    #     for hpo in expanded:
-    #         self.hpo[hpo] = "T"
+    def filter_hpos_by_response(self, responses):
+        if isinstance(responses, str):
+            responses = {responses}
+        filtered = {term for term, response in self.hpo.items()
+                    if response in responses}
+        return filtered
 
     def convert_birthday_to_datetime(self):
         if not self.phenotypes:

@@ -87,22 +87,6 @@ def gene_comparison_heatmap(table):
     plt.show()
 
 
-# def similarity_vs_hpo_scatter(patient_comparison):
-#     points = []
-#     for intersect in patient_comparison:
-#         p1 = patient_comparison.patient_db[intersect.patients[0]]
-#         p2 = patient_comparison.patient_db[intersect.patients[1]]
-#         if p1.id == p2.id:
-#             continue
-#         points.append((intersect.gene_similarity, intersect.hpo_count))
-#     points = list(zip(*points))
-#     plt.scatter(*points)
-#     plt.ylabel("Shared HPO terms", fontsize=24)
-#     plt.xlabel("Shared genes (percent similarity)", fontsize=24)
-#     plt.yticks(fontsize=20)
-#     plt.xticks(fontsize=20)
-
-
 def plot_individual_factors(comparison_table, percentage=True):
     """Plot scatterplots for similarity vs. shared HPO terms."""
     plotters = [intersect for intersect in comparison_table
@@ -631,30 +615,6 @@ def minimum_precision(comparison, phenotypes=None,
                       xaxis_title="Statistic Value",
                       yaxis_title="Fraction of patients")
     fig.update_layout(legend=dict(groupclick="toggleitem"))
-    return fig
-
-
-def plot_genes(geneset, chromosome):
-    cats = {0: ["blue", "Regular", "legendonly"],
-            1: ["orange", "HI", True],
-            2: ["red", "DE", True]}
-    legend = [True, True, True]
-    fig = go.Figure()
-    for i, gene in enumerate(geneset.chromosomes[chromosome].values()):
-        cat = max(gene.dominant*2, gene.is_haploinsufficient())
-        color = cats[cat][0]
-        fig.add_trace(go.Scatter(
-            x=[gene.start, gene.end, gene.end, gene.start, gene.start],
-            y=[0, 0, 1, 1, 0],
-            fill="toself",
-            mode="lines",
-            line_color=color,
-            legendgroup=cats[cat][1],
-            name=f"{cats[cat][1]}",
-            showlegend=legend[cat],
-            visible=cats[cat][2]
-            ))
-        legend[cat] = False
     return fig
 
 

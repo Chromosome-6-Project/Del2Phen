@@ -5,7 +5,6 @@
 @author: T.D. Medina
 """
 
-
 REFERENCE_CHR = [str(i) for i in range(1, 23)] + ["X", "Y"]
 
 
