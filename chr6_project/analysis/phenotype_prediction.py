@@ -148,6 +148,15 @@ class PredictionDatabase:
             precision_stats[patient] = dict(zip(stat_names, patient_stats))
         return precision_stats
 
+    def make_individual_precision_table(self, phenotypes=None, rel_threshold=0.2,
+                                        abs_threshold=2, use_adjusted_frequency=True,
+                                        group_size_threshold=5):
+        precisions = self.calculate_individual_precision(phenotypes, rel_threshold,
+                                                         abs_threshold, use_adjusted_frequency,
+                                                         group_size_threshold)
+        table = pd.DataFrame.from_dict(precisions, orient="index")
+        return table
+
     def calculate_overall_precision(self, phenotypes=None, rel_threshold=0.2,
                                     abs_threshold=2, use_adjusted_frequency=True,
                                     group_size_threshold=5):
