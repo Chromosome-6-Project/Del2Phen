@@ -36,10 +36,12 @@ class ComparisonTable:
             self.read_from_existing(comparison_table)
             return
         self.patient_db = patient_db
-        self.raw = self.compare_patients(pLI_threshold, HI_threshold,
-                                         phaplo_threshold, mode)
-        self.index = self.make_index()
-        self.array = self.make_array()
+        # self.raw = self.compare_patients(pLI_threshold, HI_threshold,
+        #                                  phaplo_threshold, mode)
+        # self.index = self.make_index()
+        # self.array = self.make_array()
+        self.index, self.array = self.compare_patients(pLI_threshold, HI_threshold,
+                                                       phaplo_threshold, mode)
         self.size = len(self.index)
 
         self.__iteri__ = 0
@@ -65,23 +67,9 @@ class ComparisonTable:
             self.__iterj__ = self.__iteri__
         return result
 
-    def make_array(self):
-        """Convert raw comparison dictionary to numpy array."""
-        array = []
-        for patient1 in self.index:
-            values = []
-            for patient2 in self.index:
-                if patient2 in self.raw[patient1]:
-                    values.append(self.raw[patient1][patient2])
-                else:
-                    values.append(self.raw[patient2][patient1])
-            array.append(values)
-        array = np.array(array)
-        return array
-
-    def make_index(self):
-        """Create name-to-number mapping to look up names in numpy array."""
-        return {j: i for i, j in enumerate(self.raw)}
+    # def make_index(self):
+    #     """Create name-to-number mapping to look up names in numpy array."""
+    #     return {j: i for i, j in enumerate(self.raw)}
 
     def lookup(self, pid1, pid2=None):
         """Look up patient or patient-patient intersect in comparison array."""
@@ -95,8 +83,8 @@ class ComparisonTable:
 
     def read_from_existing(self, comparison_table):
         self.patient_db = comparison_table.patient_db
-        self.raw = comparison_table.raw
-        self.index = comparison_table.index
+        # self.raw = comparison_table.raw
+        # self.index = comparison_table.index
         self.array = comparison_table.array
         self.size = comparison_table.size
 
@@ -120,12 +108,31 @@ class ComparisonTable:
                                                             phaplo_threshold, mode
                                                             )
             comparisons[id_i] = patient_comparison
-        return comparisons
+        index, comparisons = self._make_comparison_array(comparisons)
+        return index, comparisons
 
-    def recompare_patients(self, pLI_threshold=0.9, HI_threshold=10, phaplo_threshold=0.86,
-                         mode="any"):
-        self.raw = self.compare_patients(pLI_threshold, HI_threshold, phaplo_threshold, mode)
-        self.array = self.make_array()
+    @staticmethod
+    def _make_comparison_array(comparisons):
+        """Convert comparison dictionary to numpy array."""
+        index = {j: i for i, j in enumerate(comparisons)}
+        array = []
+        for patient1 in index:
+            values = []
+            for patient2 in index:
+                if patient2 in comparisons[patient1]:
+                    values.append(comparisons[patient1][patient2])
+                else:
+                    values.append(comparisons[patient2][patient1])
+            array.append(values)
+        array = np.array(array)
+        return index, array
+
+    # def recompare_patients(self, pLI_threshold=0.9, HI_threshold=10,
+    #                        phaplo_threshold=0.86, mode="any"):
+    #     self.index, self.array = self.compare_patients(pLI_threshold, HI_threshold,
+    #                                                    phaplo_threshold, mode)
+    #     # self.raw = self.compare_patients(pLI_threshold, HI_threshold, phaplo_threshold, mode)
+    #     # self.array = self.make_array()
 
     @classmethod
     def compare_all(cls, patient_1, patient_2,
@@ -224,6 +231,41 @@ class ComparisonTable:
         hpo_set2 = {hpo for hpo, response in patient_2.hpo.items() if response == "T"}
         jaccard_index, intersect = jaccard(hpo_set1, hpo_set2)
         return jaccard_index, intersect
+
+    def tabulate_summary(self):
+        table = []
+        for comparison in self:
+            entry = list(comparison.patients.keys())
+            entry.extend([
+                comparison.length_similarity,
+                comparison.loci_similarity,
+                comparison.gene_similarity,
+                comparison.hi_gene_similarity,
+                comparison.dom_gene_match
+                ])
+            table.append(entry)
+        table = pd.DataFrame(table)
+        return table
+
+    def convert_to_3d_array(self):
+        array = np.ndarray([6, *self.array.shape])
+        for intersect in self:
+            if not intersect.self_compare:
+                pid1, pid2 = intersect.ids
+            else:
+                pid1 = list(intersect.ids)[0]
+                pid2 = pid1
+            pid1, pid2 = self.index[pid1], self.index[pid2]
+            for i, sim in enumerate(intersect.get_similarities()):
+                array[i, pid1, pid2] = sim
+                array[i, pid2, pid1] = sim
+        return array
+    # def export_tables_per_comparator(self):
+    #     tables = dict()
+    #     comparators = ["length_similarity", "loci_similarity", "gene_similarity",
+    #                    "hi_gene_similarity", "dom_gene_match"]
+    #     for comparator in comparators:
+    #         table = {pid1: {pid2: intersect[]}}
 
     # TODO: Needs to be updated, won't work currently.
     def write_all_comparisons(self, outfile):
