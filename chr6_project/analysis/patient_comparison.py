@@ -734,6 +734,12 @@ class PatientIntersect:
         other_id = self.get_other_id(ID)
         return self.patients[other_id]
 
+    def get_similarities(self):
+        similarities = [self.length_similarity, self.loci_similarity, self.gene_similarity,
+                        self.hi_gene_similarity, self.dom_gene_match, self.hpo_similarity]
+        return similarities
+
+
 # XXX: This probably doesn't work anymore.
 # def write_comparison_table(table, patients, out, self_match="size"):
 #     """Write comparison table to file. Deprecated."""
