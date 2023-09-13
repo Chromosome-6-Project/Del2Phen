@@ -163,6 +163,8 @@ class DataManager:
             if patient.genotypes:
                 if "origin info" in patient.genotypes[0]:
                     patient.origin = patient.genotypes[0]["origin info"]
+                elif "origin_info" in patient.genotypes[0]:
+                    patient.origin = patient.genotypes[0]["origin_info"]
                 else:
                     patient.origin = None
             patient.convert_birthday_to_datetime()
