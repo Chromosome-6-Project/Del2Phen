@@ -145,21 +145,41 @@ class ComparisonTable:
         index, comparisons = self._make_comparison_array(comparisons)
         return index, comparisons
 
-    @staticmethod
-    def _make_comparison_array(comparisons):
-        """Convert comparison dictionary to numpy array."""
-        index = {j: i for i, j in enumerate(comparisons)}
-        array = []
-        for patient1 in index:
-            values = []
-            for patient2 in index:
-                if patient2 in comparisons[patient1]:
-                    values.append(comparisons[patient1][patient2])
-                else:
-                    values.append(comparisons[patient2][patient1])
-            array.append(values)
-        array = np.array(array)
-        return index, array
+    def compare_patient_vs_others(self, patient: Patient, save_results=False,
+                                  chromosomes: Optional[Union[str, List[str]]] = None,
+                                  cnv_changes: Optional[Union[str, List[str]]] = None,
+                                  pLI_threshold=0.9, HI_threshold=10, phaplo_threshold=0.86,
+                                  mode="any"):
+        """Compare one Patient object against all patients in the PatientDatabase."""
+        ids = self.index.keys()
+        comparisons = []
+        for pid in ids:
+            patient_2 = self.patient_db[pid]
+            intersect = self.compare_pair(patient, patient_2,
+                                          chromosomes=chromosomes,
+                                          cnv_changes=cnv_changes,
+                                          HI_threshold=HI_threshold,
+                                          phaplo_threshold=phaplo_threshold,
+                                          pLI_threshold=pLI_threshold,
+                                          mode=mode)
+            comparisons.append(intersect)
+        if save_results:
+            self_compare = self.compare_pair(patient, patient,
+                                             chromosomes=chromosomes, cnv_changes=cnv_changes,
+                                             HI_threshold=HI_threshold,
+                                             phaplo_threshold=phaplo_threshold,
+                                             pLI_threshold=pLI_threshold,
+                                             mode=mode)
+            self.patient_db.add_patient(patient)
+            self.index[patient.id] = max(self.index.values())+1
+            self.array = np.append(self.array,
+                                   np.array([comparisons]).T,
+                                   axis=1)
+            comparisons.append(self_compare)
+            self.array = np.append(self.array,
+                                   np.array([comparisons]),
+                                   axis=0)
+        return comparisons
 
     # def recompare_patients(self, pLI_threshold=0.9, HI_threshold=10,
     #                        phaplo_threshold=0.86, mode="any"):
@@ -834,3 +854,38 @@ class PatientIntersect:
 #     writer = [header + "\n"] + writer
 #     with open(out, "w") as outfile:
 #         outfile.writelines(writer)
+
+
+def predict_phenotypes_for_patient(patient: Patient, comparison_database: ComparisonTable,
+                                   chromosomes: Optional[Union[str, List[str]]] = None,
+                                   cnv_changes: Optional[Union[str, List[str]]] = None,
+                                   length_similarity=0, loci_similarity=0,
+                                   gene_similarity=0, hi_gene_similarity=0,
+                                   dom_gene_match=True, hpo_similarity=0,
+                                   pLI_threshold=0.9, HI_threshold=10,
+                                   phaplo_threshold=0.86, mode="any",
+                                   tabulate=False):
+    params = dict(chromosomes=chromosomes, cnv_changes=cnv_changes,
+                  pLI_threshold=pLI_threshold, HI_threshold=HI_threshold,
+                  phaplo_threshold=phaplo_threshold, mode=mode, save_results=False)
+    intersections = comparison_database.compare_patient_vs_others(patient, **params)
+    intersections = [inter for inter in intersections
+                     if all([inter.length_similarity >= length_similarity,
+                             inter.loci_similarity >= loci_similarity,
+                             inter.gene_similarity >= gene_similarity,
+                             inter.hi_gene_similarity >= hi_gene_similarity,
+                             inter.dom_gene_match or not dom_gene_match,
+                             inter.hpo_similarity >= hpo_similarity])]
+    group = [inter.get_other_patient(patient.id) for inter in intersections]
+    group = PatientDatabase({group_patient.id: group_patient for group_patient in group})
+    predictions = comparison_database.predict_group_phenotypes(group, show=0)
+    if tabulate:
+        table = pd.DataFrame([pred.__dict__ for pred in predictions.values()])
+        table["trait_id"] = [trait.id for trait in table.trait]
+        table["trait_name"] = [trait.name for trait in table.trait]
+        table = table[["trait_id", "trait_name",
+                       "freq", "population", "freq_adjusted", "population_adjusted",
+                       "true_count", "false_count", "unsure_count", "na_count"]]
+        table = table.set_index("trait_id")
+        return table
+    return predictions
