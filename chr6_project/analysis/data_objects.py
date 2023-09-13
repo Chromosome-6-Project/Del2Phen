@@ -202,8 +202,8 @@ class PatientDatabase:
 
     def __init__(self, patients):
         self.patients = patients
-        self.index = self.make_index()
-        self.cnvs = self.organize_cnvs()
+        self.index = self._make_index()
+        self.cnvs = self._organize_cnvs()
         self.size = len(self.patients)
         self.hpos = {hpo for patient in self for hpo in patient.hpo}
 
@@ -227,12 +227,12 @@ class PatientDatabase:
         self.__iteri__ += 1
         return result
 
-    def make_index(self):
+    def _make_index(self):
         """Make database index for iteration purposes."""
         index = dict(enumerate(self.patients))
         return index
 
-    def organize_cnvs(self):
+    def _organize_cnvs(self):
         """Get and organize CNVs from all patients."""
         cnvs = sorted(
             [cnv for patient in self.patients.values() for cnv in patient.cnvs],
@@ -247,20 +247,52 @@ class PatientDatabase:
         id_list = list(self.patients.keys())
         return id_list
 
-    def get_median_cnv_position(self, chromosome):
+    def filter_cnvs(self,
+                    chromosomes: Optional[Union[str, List[str]]] = None,
+                    cnv_changes: Optional[Union[str, List[str]]] = None) -> List[CNV]:
+        if isinstance(chromosomes, str):
+            chromosomes = {chromosomes}
+        elif chromosomes is None:
+            chromosomes = set(self.cnvs.keys())
+        if isinstance(cnv_changes, str):
+            cnv_changes = {cnv_changes}
+
+        cnvs = [cnv for chromosome in chromosomes for cnv in self.cnvs[chromosome]
+                if (cnv_changes is None or cnv.change in cnv_changes)]
+        return cnvs
+
+    def get_median_cnv_position(
+            self,
+            chromosome: str,
+            cnv_changes: Optional[Union[str, List[str]]] = None
+            ) -> Optional[int]:
         if chromosome not in self.cnvs:
-            return 0
-        cnv_median = median([(cnv.range.start + cnv.range.stop)/2 for cnv in self.cnvs[chromosome]])
+            return None
+        cnvs = self.filter_cnvs(chromosome, cnv_changes)
+        cnv_median = median([(cnv.range.start + cnv.range.stop)/2
+                             for cnv in cnvs])
         cnv_median = int(cnv_median)
         return cnv_median
 
-    def get_mean_cnv_position(self, chromosome):
-        cnv_mean = mean([(cnv.range.start + cnv.range.stop)/2 for cnv in self.cnvs[chromosome]])
+    def get_mean_cnv_position(
+            self,
+            chromosome: str,
+            cnv_changes: Optional[Union[str, List[str]]] = None
+            ) -> Optional[int]:
+        if chromosome not in self.cnvs:
+            return None
+        cnvs = self.filter_cnvs(chromosome, cnv_changes)
+        cnv_mean = mean([(cnv.range.start + cnv.range.stop)/2
+                         for cnv in cnvs])
         return cnv_mean
 
-    def remove_patients_by_cnv_type(self, cnv_type):
+    def remove_patients_by_cnv_type(self, cnv_changes: Union[List, Set]):
+        if isinstance(cnv_changes, str):
+            cnv_changes = {cnv_changes}
+        else:
+            cnv_changes = set(cnv_changes)
         patients = {patient.id: patient for patient in self
-                    if cnv_type not in [cnv.change for cnv in patient.cnvs]}
+                    if cnv_changes & {cnv.change for cnv in patient.cnvs}}
         patients = PatientDatabase(patients)
         return patients
 
