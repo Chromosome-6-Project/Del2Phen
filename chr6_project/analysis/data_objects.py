@@ -5,10 +5,12 @@
 @author: T.D. Medina
 """
 
-from collections import namedtuple
+from collections import defaultdict, namedtuple
 import csv
 from datetime import datetime
+from typing import Dict, List, Optional, Set, Union
 
+from pronto import Term
 from numpy import mean, median
 
 from chr6_project.analysis.utilities import (
@@ -16,8 +18,7 @@ from chr6_project.analysis.utilities import (
     overlap,
     REFERENCE_CHR,
     )
-from chr6_project.analysis.gene_set import is_haploinsufficient
-
+from chr6_project.analysis.gene_set import Gene, GeneSet, is_haploinsufficient
 
 SequenceContig = namedtuple("SequenceContig",
                             ["name", "length", "cumulative_start"])
@@ -294,7 +295,7 @@ class PatientDatabase:
 
     def make_gene_table(self):
         """Tabulate gene info for all patients."""
-        all_genes = sorted(list({gene.gene_id for patient in self for gene in patient.all_genes()}))
+        all_genes = sorted(list({gene.gene_id for patient in self for gene in patient.get_all_genes()}))
         all_genes = {name: pos for pos, name in enumerate(all_genes)}
         gene_count = len(all_genes)
 
@@ -303,7 +304,7 @@ class PatientDatabase:
 
         for patient in self:
             row = [0] * gene_count
-            for gene in patient.all_genes():
+            for gene in patient.get_all_genes():
                 row[all_genes[gene.gene_id]] = 1
             row.insert(0, patient.id)
 
@@ -425,25 +426,46 @@ class Patient:
         cnvs = sorted(cnvs, key=lambda x: REFERENCE_CHR.index(x.chromosome))
         return cnvs
 
-    def get_median_cnv_position(self, chromosome):
-        cnvs = [cnv for cnv in self.cnvs if cnv.chromosome == chromosome]
+    def filter_cnvs(self, chromosomes: Optional[Union[str, List[str]]] = None,
+                    cnv_changes: Optional[Union[str, List[str]]] = None) -> List[CNV]:
+        if isinstance(chromosomes, str):
+            chromosomes = {chromosomes}
+        if isinstance(cnv_changes, str):
+            cnv_changes = {cnv_changes}
+        cnvs = [cnv for cnv in self.cnvs
+                if (chromosomes is None or cnv.chromosome in chromosomes)
+                and (cnv_changes is None or cnv.change in cnv_changes)]
+        return cnvs
+
+    def get_median_cnv_position(
+            self,
+            chromosome: str,
+            cnv_changes: Optional[Union[str, List[str]]] = None
+            ) -> Optional[int]:
+        cnvs = self.filter_cnvs(chromosome, cnv_changes)
         if not cnvs:
             return None
-        cnv_median = median([(cnv.range.start + cnv.range.stop)/2 for cnv in cnvs])
-        cnv_median = int(cnv_median)
+        cnv_median = int(median([(cnv.range.start + cnv.range.stop)/2 for cnv in cnvs]))
         return cnv_median
 
-    def get_mean_cnv_position(self, chromosome):
-        cnvs = [cnv for cnv in self.cnvs if cnv.chromosome == chromosome]
+    def get_mean_cnv_position(
+            self,
+            chromosome: str,
+            cnv_changes: Optional[Union[str, List[str]]] = None) -> Optional[float]:
+        cnvs = self.filter_cnvs(chromosome, cnv_changes)
         if not cnvs:
             return None
         cnv_mean = mean([(cnv.range.start + cnv.range.stop)/2 for cnv in cnvs])
         return cnv_mean
 
-    def get_affected_ranges(self):
-        """Get CNV ranges from all CNVs."""
-        ranges = {cnv.chromosome: [] for cnv in self.cnvs}
-        for cnv in self.cnvs:
+    def get_affected_ranges(
+            self,
+            chromosomes: Optional[Union[str, List[str]]] = None,
+            cnv_changes: Optional[Union[str, List[str]]] = None) -> Dict[str, range]:
+        """Get CNV ranges from selected CNVs."""
+        cnvs = self.filter_cnvs(chromosomes, cnv_changes)
+        ranges = defaultdict(list)
+        for cnv in cnvs:
             ranges[cnv.chromosome].append(cnv.range)
         ranges = {chromosome: merge_range_list(cnv_ranges)
                   for chromosome, cnv_ranges in ranges.items()}
@@ -455,32 +477,43 @@ class Patient:
             cnv.genes = gene_set_obj.get_locus(cnv.chromosome, cnv.range.start,
                                                cnv.range.stop)
 
-    def all_genes(self):
-        """Get all genes affected by all CNVs."""
-        all_genes = {gene for cnv in self.cnvs for gene in cnv.genes}
+    def get_all_genes(self, chromosomes: Optional[Union[str, List[str]]] = None,
+                      cnv_changes: Optional[Union[str, List[str]]] = None) -> Set[Gene]:
+        """Get all genes affected by selected CNVs."""
+        cnvs = self.filter_cnvs(chromosomes, cnv_changes)
+        all_genes = {gene for cnv in cnvs for gene in cnv.genes}
         return all_genes
 
-    def all_HI_genes(self, pLI_threshold=0.9, HI_threshold=10,
-                     phaplo_threshold=.86, mode="any"):
-        """Get all haploinsufficient genes affected by all CNVs."""
-        hi_genes = {gene for cnv in self.cnvs for gene in cnv.genes
+    def get_all_HI_genes(self, chromosomes: Optional[Union[str, List[str]]] = None,
+                         cnv_changes: Optional[Union[str, List[str]]] = None,
+                         pLI_threshold: float = 0.9,
+                         HI_threshold: float = 10,
+                         phaplo_threshold: float = .86,
+                         mode="any") -> Set[Gene]:
+        """Get all haploinsufficient genes affected by selected CNVs."""
+        cnvs = self.filter_cnvs(chromosomes, cnv_changes)
+        hi_genes = {gene for cnv in cnvs for gene in cnv.genes
                     if is_haploinsufficient(gene, pLI_threshold, HI_threshold,
                                             phaplo_threshold, mode)}
         return hi_genes
 
-    def all_dominant_genes(self):
-        dom_genes = {gene for cnv in self.cnvs for gene in cnv.genes
+    def get_all_dominant_genes(
+            self,
+            chromosomes: Optional[Union[str, List[str]]] = None,
+            cnv_changes: Optional[Union[str, List[str]]] = None) -> Set[Gene]:
+        cnvs = self.filter_cnvs(chromosomes, cnv_changes)
+        dom_genes = {gene for cnv in cnvs for gene in cnv.genes
                      if gene.dominant}
         return dom_genes
 
-    def filter_hpos_by_response(self, responses):
+    def filter_hpos_by_response(self, responses: Union[str, List[str]]) -> Set[Term]:
         if isinstance(responses, str):
             responses = {responses}
         filtered = {term for term, response in self.hpo.items()
                     if response in responses}
         return filtered
 
-    def convert_birthday_to_datetime(self):
+    def convert_birthday_to_datetime(self) -> None:
         if not self.phenotypes:
             return
         if "birthdate" not in self.phenotypes[0] or not self.phenotypes[0]["birthdate"]:
@@ -495,7 +528,7 @@ class Patient:
         self.age = years
         return
 
-    def check_if_submitted(self):
+    def check_if_submitted(self) -> bool:
         submits = {status for pheno in self.phenotypes
                    for status in pheno["submit_status"]}
         return "SUBMITTED" in submits
