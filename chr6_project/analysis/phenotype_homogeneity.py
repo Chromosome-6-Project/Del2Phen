@@ -5,6 +5,8 @@
 @author: T.D. Medina
 """
 
+from typing import List, Union, Optional
+
 import numpy as np
 import pandas as pd
 import plotly.express as px
@@ -94,9 +96,10 @@ class HomogeneityDatabase:
                            for pheno in group_prev.phenotypes}
         self.size = len(self.patient_group_prevalences)
 
-    def sorted_by_chromosome(self, chromosome):
+    def sorted_by_chromosome(self, chromosome: str,
+                             cnv_changes: Optional[Union[str, List[str]]] = None):
         sorted_prevs = sorted(self.patient_group_prevalences.values(),
-                              key=lambda x: x.patients.get_median_cnv_position(chromosome))
+                              key=lambda x: x.patients.get_median_cnv_position(chromosome, cnv_changes))
         return sorted_prevs
 
     def calculate_all_homogeneities(self, rel_threshold=0.2, abs_threshold=2,
@@ -180,7 +183,7 @@ class HomogeneityDatabase:
 def plot_phenotype_homogeneities(comparison, selected_hpos, hi_gene_similarity, abs_threshold):
     homos = comparison.calculate_all_patient_homogeneities(selected_hpos, hi_gene_similarity=hi_gene_similarity)
     homos = sorted(homos.values(),
-                   key=lambda x: x.patients.get_median_cnv_position("6"))
+                   key=lambda x: x.patients.get_median_cnv_position("6", None))
     table = {}
     for i in reversed(np.linspace(0.01, 1, 100)):
         table[f"{i:.2}"] = {
@@ -203,7 +206,7 @@ def plot_phenotype_homogeneities_vs_hi_sim(comparison, selected_hpos, hi_similar
         homos = comparison.test_all_homogeneities(selected_hpos, hi_gene_similarity=hi_similarity)
         homo_scores += [homo.calculate_homogeneity(0.2, abs_threshold)
                         for homo in homos.values()]
-        cnv_positions += [homo.patients.get_median_cnv_position("6")
+        cnv_positions += [homo.patients.get_median_cnv_position("6", None)
                           for homo in homos.values()]
         ids += [homo.group_id for homo in homos.values()]
         sizes += [homo.group_size for homo in homos.values()]
@@ -238,7 +241,7 @@ def plot_phenotype_homogeneities_vs_hi_sim2(comparison, selected_hpos, hi_simila
         homos = comparison.test_all_homogeneities(selected_hpos, hi_gene_similarity=hi_similarity)
         homo_scores += [homo.calculate_homogeneity(0.2, abs_threshold)
                         for homo in homos.values()]
-        cnv_positions += [homo.patients.get_median_cnv_position("6")
+        cnv_positions += [homo.patients.get_median_cnv_position("6", None)
                           for homo in homos.values()]
         ids += [homo.group_id for homo in homos.values()]
         sizes += [homo.group_size for homo in homos.values()]

@@ -52,8 +52,8 @@ def build_network_nodes(comparison_table):
                      f"HI score: {hi}<br>"
                      f"Genes: {value}<br></p>")
         else:
-            hi = len(comparison_table.patient_db[patient].all_HI_genes())
-            dom = len(comparison_table.patient_db[patient].all_dominant_genes())
+            hi = len(comparison_table.patient_db[patient].get_all_HI_genes())
+            dom = len(comparison_table.patient_db[patient].get_all_dominant_genes())
             value = lookup.gene_count
             title = (f"<p>{patient}<br>"
                      f"Group: {group}<br>"
@@ -239,7 +239,7 @@ def get_subnet_sizes_and_locations(graph, patient_db):
     middles = []
     for subgroup in subgroups:
         subgroup_genes = {gene for patient in subgroup
-                          for gene in patient_db[patient].all_genes()
+                          for gene in patient_db[patient].get_all_genes()
                           if gene.seqname == "6"}
         if not subgroup_genes:
             continue

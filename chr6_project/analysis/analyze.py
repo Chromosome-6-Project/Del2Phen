@@ -4,6 +4,7 @@
 """
 
 import csv
+from typing import List, Optional, Union
 
 from chr6_project.analysis.patient_comparison import ComparisonTable
 from chr6_project.analysis.data_objects import PatientDatabase, Patient
@@ -224,6 +225,8 @@ class DataManager:
 
 
 def analyze(genotypes, phenotypes, patient_hpo, geneset_gtf, drop_list_file,
+            chromosomes: Optional[Union[str, List[str]]] = None,
+            cnv_changes: Optional[Union[str, List[str]]] = None,
             hpo_termset_yaml=None, expand_hpos=False, remove_ungenotyped=True,
             remove_unphenotyped=True, remove_unsubmitted=True):
     # Read geneset.
@@ -279,7 +282,7 @@ def analyze(genotypes, phenotypes, patient_hpo, geneset_gtf, drop_list_file,
     patients = PatientDatabase(patients)
 
     print("Running comparisons...")
-    comparison = ComparisonTable(patients)
+    comparison = ComparisonTable(patients, chromosomes=chromosomes, cnv_changes=cnv_changes)
 
     print("Done.")
     return (
@@ -295,7 +298,10 @@ def analyze(genotypes, phenotypes, patient_hpo, geneset_gtf, drop_list_file,
         )
 
 
-def analyze_online(username, password, drop_list_file=None, hpo_termset_yaml=None,
+def analyze_online(username, password,
+                   chromosomes: Optional[Union[str, List[str]]] = None,
+                   cnv_changes: Optional[Union[str, List[str]]] = None,
+                   drop_list_file=None, hpo_termset_yaml=None,
                    expand_hpos=False, remove_ungenotyped=True, remove_unphenotyped=True,
                    remove_unsubmitted=True):
     print("Loading geneset...")
@@ -322,11 +328,11 @@ def analyze_online(username, password, drop_list_file=None, hpo_termset_yaml=Non
     print("Building patient database...")
     patients = PatientDatabase(patients)
 
-    print("Filtering patients with duplications...")
-    patients = patients.remove_patients_by_cnv_type("Duplication x3")
+    # print("Filtering patients with duplications...")
+    # patients = patients.remove_patients_by_cnv_type("Duplication x3")
 
     print("Comparing patients...")
-    comparison = ComparisonTable(patients)
+    comparison = ComparisonTable(patients, chromosomes=chromosomes, cnv_changes=cnv_changes)
 
     print("Done")
     return comparison, geneset, ontology, termset

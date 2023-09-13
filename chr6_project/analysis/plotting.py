@@ -494,7 +494,7 @@ def patients_per_ph_by_area(comparison, phenotypes,
 
         region_data = [[], [], []]
         for group_ph in group_phs.values():
-            median_locus = group_ph.patients.get_median_cnv_position("6")
+            median_locus = group_ph.patients.get_median_cnv_position("6", None)
             region = (divider < median_locus) + (divider*2 < median_locus)
             region_data[region].append(group_ph)
 
@@ -533,14 +533,14 @@ def plot_precision_stats(prediction_database, patient_database, phenotypes=None,
               group_size_threshold)
 
     prediction_stats = prediction_database.calculate_individual_precision(*params)
-    positions = [patient_database[patient].get_median_cnv_position("6")
+    positions = [patient_database[patient].get_median_cnv_position("6", None)
                  for patient in prediction_stats]
     sizes = [prediction_database.predictions[patient].patient_group.size
              for patient in prediction_stats]
 
     if color_de_patients:
         de_patients = [patient.id for patient in patient_database
-                       if patient.all_dominant_genes()
+                       if patient.get_all_dominant_genes()
                        and patient.id in prediction_stats]
 
     prediction_stats = pd.DataFrame.from_dict(prediction_stats, orient="index")

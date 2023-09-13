@@ -5,10 +5,12 @@
 @author: T.D. Medina
 """
 
+from typing import List, Optional, Union
+
 import numpy as np
 import pandas as pd
 
-from chr6_project.analysis.data_objects import PatientDatabase
+from chr6_project.analysis.data_objects import Patient, PatientDatabase
 from chr6_project.analysis.phenotype_homogeneity import (
     PhenotypePrevalence,
     PatientGroupPrevalences,
@@ -30,8 +32,11 @@ from chr6_project.analysis.utilities import (
 class ComparisonTable:
     """Data object holding all patient vs. patient comparisons."""
 
-    def __init__(self, patient_db=None, pLI_threshold=0.9, HI_threshold=10,
-                 phaplo_threshold=0.86, comparison_table=None, mode="confirm"):
+    def __init__(self, patient_db=None,
+                 chromosomes: Optional[Union[str, List[str]]] = None,
+                 cnv_changes: Optional[Union[str, List[str]]] = None,
+                 pLI_threshold=0.9, HI_threshold=10, phaplo_threshold=0.86,
+                 comparison_table=None, mode="confirm"):
         if comparison_table is not None:
             self.read_from_existing(comparison_table)
             return
@@ -40,7 +45,8 @@ class ComparisonTable:
         #                                  phaplo_threshold, mode)
         # self.index = self.make_index()
         # self.array = self.make_array()
-        self.index, self.array = self.compare_patients(pLI_threshold, HI_threshold,
+        self.index, self.array = self.compare_patients(chromosomes, cnv_changes,
+                                                       pLI_threshold, HI_threshold,
                                                        phaplo_threshold, mode)
         self.size = len(self.index)
 
@@ -88,7 +94,10 @@ class ComparisonTable:
         self.array = comparison_table.array
         self.size = comparison_table.size
 
-    def compare_patients(self, pLI_threshold=0.9, HI_threshold=10, phaplo_threshold=0.86,
+    def compare_patients(self,
+                         chromosomes: Optional[Union[str, List[str]]] = None,
+                         cnv_changes: Optional[Union[str, List[str]]] = None,
+                         pLI_threshold=0.9, HI_threshold=10, phaplo_threshold=0.86,
                          mode="any"):
         """Compare all patients to each other."""
         ids = list(self.patient_db.patients.keys())
@@ -98,15 +107,22 @@ class ComparisonTable:
             patient_i = self.patient_db[id_i]
             patient_comparison = dict()
             patient_comparison[id_i] = self.compare_all(patient_i, patient_i,
-                                                        pLI_threshold, HI_threshold,
-                                                        phaplo_threshold, mode)
+                                                        chromosomes=chromosomes,
+                                                        cnv_changes=cnv_changes,
+                                                        HI_threshold=HI_threshold,
+                                                        phaplo_threshold=phaplo_threshold,
+                                                        pLI_threshold=pLI_threshold,
+                                                        mode=mode)
 
             for id_j in ids:
                 patient_j = self.patient_db[id_j]
                 patient_comparison[id_j] = self.compare_all(patient_i, patient_j,
-                                                            pLI_threshold, HI_threshold,
-                                                            phaplo_threshold, mode
-                                                            )
+                                                            chromosomes=chromosomes,
+                                                            cnv_changes=cnv_changes,
+                                                            HI_threshold=HI_threshold,
+                                                            phaplo_threshold=phaplo_threshold,
+                                                            pLI_threshold=pLI_threshold,
+                                                            mode=mode)
             comparisons[id_i] = patient_comparison
         index, comparisons = self._make_comparison_array(comparisons)
         return index, comparisons
@@ -135,10 +151,17 @@ class ComparisonTable:
     #     # self.array = self.make_array()
 
     @classmethod
-    def compare_all(cls, patient_1, patient_2,
-                    pLI_threshold=0.9, HI_threshold=10,
-                    phaplo_threshold=0.86, mode="any"):
-        """Compare all metrics between two patients."""
+    def compare_all(cls, patient_1: Patient, patient_2: Patient,
+                    chromosomes: Optional[Union[str, List[str]]] = None,
+                    cnv_changes: Optional[Union[str, List[str]]] = None,
+                    HI_threshold=10,
+                    phaplo_threshold=0.86,
+                    pLI_threshold=0.9,
+                    mode="any"):
+        """Compare all metrics between two patients.
+        :param chromosomes:
+        :param cnv_changes:
+        """
         cnv_type = {cnv.change for cnv in patient_1.cnvs + patient_2.cnvs}
         if len(cnv_type) == 0:
             cnv_type = "N/A"
@@ -146,14 +169,20 @@ class ComparisonTable:
             cnv_type = "Mixed"
         else:
             cnv_type = list(cnv_type)[0]
-        length_compare = cls.compare_length(patient_1, patient_2)
-        loci_compare = cls.compare_loci(patient_1, patient_2)
-        gene_compare = cls.compare_genes(patient_1, patient_2)
+        length_compare = cls.compare_length(patient_1, patient_2, chromosomes, cnv_changes)
+        loci_compare = cls.compare_loci(patient_1, patient_2, chromosomes, cnv_changes)
+        gene_compare = cls.compare_genes(patient_1, patient_2, chromosomes, cnv_changes)
         hi_compare = cls.compare_HI_genes(patient_1, patient_2,
-                                          pLI_threshold, HI_threshold,
-                                          phaplo_threshold, mode)
-        dom_compare = cls.compare_dominant_genes(patient_1, patient_2)
-        dom_match = cls.check_dominant_match(patient_1, patient_2)
+                                          chromosomes=chromosomes,
+                                          cnv_changes=cnv_changes,
+                                          pLI_threshold=pLI_threshold,
+                                          HI_threshold=HI_threshold,
+                                          phaplo_threshold=phaplo_threshold,
+                                          mode=mode)
+        dom_compare = cls.compare_dominant_genes(patient_1, patient_2,
+                                                 chromosomes, cnv_changes)
+        dom_match = cls.check_dominant_match(patient_1, patient_2,
+                                             chromosomes, cnv_changes)
         hpo_compare = cls.compare_hpos(patient_1, patient_2)
         comparison = PatientIntersect(
             patient_1, patient_2, cnv_type,
@@ -165,19 +194,23 @@ class ComparisonTable:
         return comparison
 
     @staticmethod
-    def compare_length(patient_1, patient_2):
+    def compare_length(patient_1: Patient, patient_2: Patient,
+                       chromosomes: Optional[Union[str, List[str]]] = None,
+                       cnv_changes: Optional[Union[str, List[str]]] = None):
         """Compare CNV length between two patients."""
-        size_1 = sum([cnv.length for cnv in patient_1.cnvs])
-        size_2 = sum([cnv.length for cnv in patient_2.cnvs])
+        size_1 = sum([cnv.length for cnv in patient_1.filter_cnvs(chromosomes, cnv_changes)])
+        size_2 = sum([cnv.length for cnv in patient_2.filter_cnvs(chromosomes, cnv_changes)])
         if size_1 == 0 or size_2 == 0:
             return 0
         return jaccard(size_1, size_2)
 
     @staticmethod
-    def compare_loci(patient_1, patient_2):
+    def compare_loci(patient_1, patient_2,
+                     chromosomes: Optional[Union[str, List[str]]] = None,
+                     cnv_changes: Optional[Union[str, List[str]]] = None):
         """Compare CNV loci between two patients."""
-        ranges_1 = patient_1.get_affected_ranges()
-        ranges_2 = patient_2.get_affected_ranges()
+        ranges_1 = patient_1.get_affected_ranges(chromosomes, cnv_changes)
+        ranges_2 = patient_2.get_affected_ranges(chromosomes, cnv_changes)
 
         total_union = 0
         total_intersect = 0
@@ -197,35 +230,50 @@ class ComparisonTable:
         return jaccard_index, total_intersect
 
     @staticmethod
-    def compare_genes(patient_1, patient_2):
+    def compare_genes(patient_1: Patient, patient_2: Patient,
+                      chromosomes: Optional[Union[str, List[str]]] = None,
+                      cnv_changes: Optional[Union[str, List[str]]] = None):
         """Compare affected genes between two patients."""
-        jaccard_index, intersect = jaccard(patient_1.all_genes(), patient_2.all_genes())
+        gene_info = [patient.get_all_genes(chromosomes, cnv_changes)
+                     for patient in [patient_1, patient_2]]
+        jaccard_index, intersect = jaccard(*gene_info)
         return jaccard_index, intersect
 
     @staticmethod
-    def compare_HI_genes(patient_1, patient_2,
-                         pLI_threshold=0.9, HI_threshold=10,
-                         phaplo_threshold=0.86, mode="any"):
-        """Compare affected HI genes between two patients."""
-        jaccard_index, intersect = jaccard(
-            patient_1.all_HI_genes(pLI_threshold, HI_threshold, phaplo_threshold, mode),
-            patient_2.all_HI_genes(pLI_threshold, HI_threshold, phaplo_threshold, mode)
-            )
+    def compare_HI_genes(patient_1: Patient, patient_2: Patient,
+                         chromosomes: Optional[Union[str, List[str]]] = None,
+                         cnv_changes: Optional[Union[str, List[str]]] = None,
+                         pLI_threshold=0.9,
+                         HI_threshold=10,
+                         phaplo_threshold=0.86,
+                         mode="any"):
+        """Compare affected HI genes between two patients. """
+        gene_info = [patient.get_all_HI_genes(chromosomes, cnv_changes, pLI_threshold,
+                                              HI_threshold, phaplo_threshold, mode)
+                     for patient in [patient_1, patient_2]]
+        jaccard_index, intersect = jaccard(*gene_info)
         return jaccard_index, intersect
 
     @staticmethod
-    def compare_dominant_genes(patient_1, patient_2):
+    def compare_dominant_genes(patient_1: Patient, patient_2: Patient,
+                               chromosomes: Optional[Union[str, List[str]]] = None,
+                               cnv_changes: Optional[Union[str, List[str]]] = None):
         """Compare affected dominant-effect genes between two patients."""
-        jaccard_index, intersect = jaccard(patient_1.all_dominant_genes(),
-                                           patient_2.all_dominant_genes())
+        gene_info = [patient.get_all_dominant_genes(chromosomes, cnv_changes)
+                     for patient in [patient_1, patient_2]]
+        jaccard_index, intersect = jaccard(*gene_info)
         return jaccard_index, intersect
 
     @staticmethod
-    def check_dominant_match(patient_1, patient_2):
-        return patient_1.all_dominant_genes() == patient_2.all_dominant_genes()
+    def check_dominant_match(patient_1: Patient, patient_2: Patient,
+                             chromosomes: Optional[Union[str, List[str]]] = None,
+                             cnv_changes: Optional[Union[str, List[str]]] = None) -> bool:
+        match = (patient_1.get_all_dominant_genes(chromosomes, cnv_changes)
+                 == patient_2.get_all_dominant_genes(chromosomes, cnv_changes))
+        return match
 
     @staticmethod
-    def compare_hpos(patient_1, patient_2):
+    def compare_hpos(patient_1: Patient, patient_2: Patient):
         """Compare HPO terms between two patients."""
         hpo_set1 = {hpo for hpo, response in patient_1.hpo.items() if response == "T"}
         hpo_set2 = {hpo for hpo, response in patient_2.hpo.items() if response == "T"}
