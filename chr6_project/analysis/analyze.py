@@ -139,7 +139,7 @@ class DataManager:
         if geneset:
             for patient in patients.values():
                 patient.cnvs = patient.extract_cnvs()
-                patient.identify_gene_overlaps(geneset)
+                patient.assign_genes_to_cnvs(geneset)
         if ontology and hpos:
             for patient in patients.values():
                 if patient.id not in hpos:

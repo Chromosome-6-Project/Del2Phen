@@ -449,7 +449,7 @@ class Patient:
                   for chromosome, cnv_ranges in ranges.items()}
         return ranges
 
-    def identify_gene_overlaps(self, gene_set_obj):
+    def assign_genes_to_cnvs(self, gene_set_obj: GeneSet) -> None:
         """Set genes affected per CNV."""
         for cnv in self.cnvs:
             cnv.genes = gene_set_obj.get_locus(cnv.chromosome, cnv.range.start,
