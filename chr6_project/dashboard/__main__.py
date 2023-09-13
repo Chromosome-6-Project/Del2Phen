@@ -210,7 +210,7 @@ def update_connectivity_plot(length_similarity, loci_similarity, gene_similarity
 def update_homogeneity_figures(length_similarity, loci_similarity, gene_similarity,
                                hi_gene_similarity, dom_gene_match, group_size_threshold,
                                rel_threshold, abs_threshold):
-    ph_database = comparison.compare_all_patient_pheno_prevalences(
+    ph_database = comparison.calculate_all_patient_pheno_prevalences(
         list(termset), length_similarity, loci_similarity, gene_similarity,
         hi_gene_similarity, dom_gene_match, hpo_similarity=0
         )
@@ -248,7 +248,7 @@ def update_homogeneity_figures(length_similarity, loci_similarity, gene_similari
 def update_predictions(length_similarity, loci_similarity, gene_similarity,
                        hi_gene_similarity, dom_gene_match, group_size_threshold,
                        rel_threshold, abs_threshold, use_adjusted_frequency):
-    prediction_db = comparison.test_all_phenotype_predictions(
+    prediction_db = comparison.test_all_patient_pheno_predictions(
         length_similarity, loci_similarity, gene_similarity,
         hi_gene_similarity, dom_gene_match,
         )
@@ -281,7 +281,7 @@ def update_prediction_table(patient_id, length_similarity, loci_similarity,
                             gene_similarity, hi_gene_similarity, dom_gene_match):
     if prediction_db is None or patient_id is None:
         raise PreventUpdate
-    prediction = comparison.test_phenotype_prediction(
+    prediction = comparison.test_patient_pheno_predictions(
         patient_id, length_similarity, loci_similarity, gene_similarity,
         hi_gene_similarity, dom_gene_match, 0
         )

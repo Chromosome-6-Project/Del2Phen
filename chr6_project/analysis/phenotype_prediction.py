@@ -184,6 +184,6 @@ def predict_test(comparison, patient_list="C:/Users/Ty/Documents/Chr6/Predict_te
     with open(patient_list) as infile:
         aafkes_patients = infile.readlines()
     aafkes_patients = [x.strip() for x in aafkes_patients]
-    all_tests = comparison.test_all_phenotype_predictions(gene_similarity=.7)
+    all_tests = comparison.test_all_patient_pheno_predictions(gene_similarity=.7)
     aafkes_tests = {x: y for x, y in all_tests.items() if x in aafkes_patients}
     return all_tests, aafkes_tests

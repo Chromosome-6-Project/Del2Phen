@@ -337,7 +337,7 @@ def patients_per_ph(comparison, phenotypes,
         hovertemplate = "PH ≥ %{x}: %{y} (%{customdata:.2%})"
     fig = go.Figure()
     for n, hi_score in enumerate(sorted(hi_scores, reverse=True)):
-        group_phs = comparison.compare_all_patient_pheno_prevalences(
+        group_phs = comparison.calculate_all_patient_pheno_prevalences(
             phenotypes=phenotypes,
             hi_gene_similarity=hi_score,
             dom_gene_match=dom_gene_match
@@ -376,8 +376,8 @@ def ph_histogram(comparison=None, phenotypes=None, existing_ph_database=None,
                                 hi_gene_similarity=hi_gene_similarity,
                                 dom_gene_match=dom_gene_match,
                                 hpo_similarity=hpo_similarity)
-        group_phs = comparison.compare_all_patient_pheno_prevalences(phenotypes=phenotypes,
-                                                                     **score_thresholds)
+        group_phs = comparison.calculate_all_patient_pheno_prevalences(phenotypes=phenotypes,
+                                                                       **score_thresholds)
 
     upper, lower = group_phs.calculate_all_homogeneities(rel_threshold, abs_threshold, min_size)
     upper = [100*score for score in upper.values()]
@@ -589,7 +589,7 @@ def minimum_precision(comparison, phenotypes=None,
     fig = go.Figure()
 
     for i, hi_score in enumerate(hi_scores):
-        prediction_database = comparison.test_all_phenotype_predictions(
+        prediction_database = comparison.test_all_patient_pheno_predictions(
             hi_gene_similarity=hi_score,
             dom_gene_match=dom_gene_match
             )
