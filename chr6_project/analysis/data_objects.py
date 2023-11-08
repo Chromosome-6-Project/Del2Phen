@@ -480,14 +480,14 @@ class PatientDatabase:
         for patient in self:
             patient.predictions = predictions[patient.id]
 
-    def calculate_cnv_size_summary(self, patient_origins=None):
+    def summarize_cnv_sizes(self, patient_origins=None):
         patients = self.filter_by_origin(patient_origins)
         sizes = [cnv.length for patient in patients for cnv in patient.cnvs]
         summary = pd.DataFrame(sizes, columns=["CNV Sizes"]).describe()
         return summary
 
-    def calculate_hi_gene_summary(self, patient_origins=None, pLI_threshold=0.9,
-                                  HI_threshold=10, phaplo_threshold=0.86, mode="confirm"):
+    def summarize_hi_gene_counts(self, patient_origins=None, pLI_threshold=0.9,
+                                 HI_threshold=10, phaplo_threshold=0.86, mode="confirm"):
         params = dict(pLI_threshold=pLI_threshold, HI_threshold=HI_threshold,
                       phaplo_threshold=phaplo_threshold, mode=mode)
         patients = self.filter_by_origin(patient_origins)
