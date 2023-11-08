@@ -488,8 +488,8 @@ class PatientDatabase:
 
     def calculate_hi_gene_summary(self, patient_origins=None, pLI_threshold=0.9,
                                   HI_threshold=10, phaplo_threshold=0.86, mode="confirm"):
-        params = {pLI_threshold: 0.9, HI_threshold: 10,
-                  phaplo_threshold: 0.86, mode: "confirm"}
+        params = dict(pLI_threshold=pLI_threshold, HI_threshold=HI_threshold,
+                      phaplo_threshold=phaplo_threshold, mode=mode)
         patients = self.filter_by_origin(patient_origins)
         counts = [len([gene for gene in cnv.genes
                        if gene.is_haploinsufficient(**params)])
