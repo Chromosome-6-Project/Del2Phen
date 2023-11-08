@@ -10,6 +10,7 @@ import csv
 from datetime import datetime
 from typing import Dict, List, Optional, Set, Union
 
+import pandas as pd
 from pronto import Term
 from numpy import mean, median
 
@@ -406,10 +407,13 @@ class PatientDatabase:
         for cnv in patient.cnvs:
             self.cnvs[cnv.chromosome].append(cnv)
 
-    def filter_by_origin(self, origin):
-        patients = {patient.id: patient for patient in self
-                    if patient.origin == origin}
-        patients = PatientDatabase(patients)
+    def filter_by_origin(self, patient_origins=None):
+        if patient_origins is None:
+            patient_origins = set()
+        elif isinstance(patient_origins, str):
+            patient_origins = {patient_origins}
+        patients = PatientDatabase({patient.id: patient for patient in self
+                                    if patient.origin in patient_origins})
         return patients
 
     def split_by_arm(self):
@@ -475,6 +479,29 @@ class PatientDatabase:
     def add_predictions(self, predictions):
         for patient in self:
             patient.predictions = predictions[patient.id]
+
+    def calculate_cnv_size_summary(self, patient_origins=None):
+        patients = self.filter_by_origin(patient_origins)
+        sizes = [cnv.length for patient in patients for cnv in patient.cnvs]
+        summary = pd.DataFrame(sizes, columns=["CNV Sizes"]).describe()
+        return summary
+
+    def calculate_hi_gene_summary(self, patient_origins=None, pLI_threshold=0.9,
+                                  HI_threshold=10, phaplo_threshold=0.86, mode="confirm"):
+        params = {pLI_threshold: 0.9, HI_threshold: 10,
+                  phaplo_threshold: 0.86, mode: "confirm"}
+        patients = self.filter_by_origin(patient_origins)
+        counts = [len([gene for gene in cnv.genes
+                       if gene.is_haploinsufficient(**params)])
+                  for patient in patients for cnv in patient.cnvs]
+        summary = pd.DataFrame(counts, columns=["HI Gene Count"]).describe()
+        return summary
+
+    def count_cnvs_with_dominant_genes(self, patient_origins=None):
+        patients = self.filter_by_origin(patient_origins)
+        de_count = sum(any([gene.dominant for gene in cnv.genes])
+                       for patient in patients for cnv in patient.cnvs)
+        return de_count
 
     def summary(self):
         """Calculate summary counts."""
