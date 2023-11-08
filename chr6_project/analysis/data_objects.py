@@ -409,8 +409,8 @@ class PatientDatabase:
 
     def filter_by_origin(self, patient_origins=None):
         if patient_origins is None:
-            patient_origins = set()
-        elif isinstance(patient_origins, str):
+            return self
+        if isinstance(patient_origins, str):
             patient_origins = {patient_origins}
         patients = PatientDatabase({patient.id: patient for patient in self
                                     if patient.origin in patient_origins})
