@@ -116,7 +116,7 @@ class ComparisonTable:
                          chromosomes: Optional[Union[str, List[str]]] = None,
                          cnv_changes: Optional[Union[str, List[str]]] = None,
                          pLI_threshold=0.9, HI_threshold=10, phaplo_threshold=0.86,
-                         mode="any"):
+                         mode="confirm"):
         """Compare all patients to each other."""
         ids = list(self.patient_db.patients.keys())
         comparisons = {}
@@ -149,7 +149,7 @@ class ComparisonTable:
                                   chromosomes: Optional[Union[str, List[str]]] = None,
                                   cnv_changes: Optional[Union[str, List[str]]] = None,
                                   pLI_threshold=0.9, HI_threshold=10, phaplo_threshold=0.86,
-                                  mode="any"):
+                                  mode="confirm"):
         """Compare one Patient object against all patients in the PatientDatabase."""
         ids = self.index.keys()
         comparisons = []
@@ -182,7 +182,7 @@ class ComparisonTable:
         return comparisons
 
     # def recompare_patients(self, pLI_threshold=0.9, HI_threshold=10,
-    #                        phaplo_threshold=0.86, mode="any"):
+    #                        phaplo_threshold=0.86, mode="confirm"):
     #     self.index, self.array = self.compare_patients(pLI_threshold, HI_threshold,
     #                                                    phaplo_threshold, mode)
     #     # self.raw = self.compare_patients(pLI_threshold, HI_threshold, phaplo_threshold, mode)
@@ -195,7 +195,7 @@ class ComparisonTable:
                      HI_threshold=10,
                      phaplo_threshold=0.86,
                      pLI_threshold=0.9,
-                     mode="any"):
+                     mode="confirm"):
         """Compare all metrics between two patients.
         :param chromosomes:
         :param cnv_changes:
@@ -284,7 +284,7 @@ class ComparisonTable:
                               pLI_threshold=0.9,
                               HI_threshold=10,
                               phaplo_threshold=0.86,
-                              mode="any"):
+                              mode="confirm"):
         """Compare affected HI genes between two patients. """
         gene_info = [patient.get_all_HI_genes(chromosomes, cnv_changes, pLI_threshold,
                                               HI_threshold, phaplo_threshold, mode)
@@ -863,7 +863,7 @@ def predict_phenotypes_for_patient(patient: Patient, comparison_database: Compar
                                    gene_similarity=0, hi_gene_similarity=0,
                                    dom_gene_match=True, hpo_similarity=0,
                                    pLI_threshold=0.9, HI_threshold=10,
-                                   phaplo_threshold=0.86, mode="any",
+                                   phaplo_threshold=0.86, mode="confirm",
                                    tabulate=False):
     params = dict(chromosomes=chromosomes, cnv_changes=cnv_changes,
                   pLI_threshold=pLI_threshold, HI_threshold=HI_threshold,
