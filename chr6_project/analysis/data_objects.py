@@ -303,7 +303,7 @@ class Patient:
                          pLI_threshold: float = 0.9,
                          HI_threshold: float = 10,
                          phaplo_threshold: float = .86,
-                         mode="any") -> Set[Gene]:
+                         mode="confirm") -> Set[Gene]:
         """Get all haploinsufficient genes affected by selected CNVs."""
         cnvs = self.filter_cnvs(chromosomes, cnv_changes)
         hi_genes = {gene for cnv in cnvs for gene in cnv.genes
