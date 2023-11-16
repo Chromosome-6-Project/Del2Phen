@@ -480,27 +480,37 @@ class PatientDatabase:
         for patient in self:
             patient.predictions = predictions[patient.id]
 
-    def summarize_cnv_sizes(self, patient_origins=None):
+    def summarize_cnv_sizes(self, patient_origins=None,
+                            chromosomes: Optional[Union[str, List[str]]] = None,
+                            cnv_changes: Optional[Union[str, List[str]]] = None):
         patients = self.filter_by_origin(patient_origins)
-        sizes = [cnv.length for patient in patients for cnv in patient.cnvs]
+        cnvs = patients.filter_cnvs(chromosomes, cnv_changes)
+        sizes = [cnv.length for cnv in cnvs]
         summary = pd.DataFrame(sizes, columns=["CNV Sizes"]).describe()
         return summary
 
-    def summarize_hi_gene_counts(self, patient_origins=None, pLI_threshold=0.9,
-                                 HI_threshold=10, phaplo_threshold=0.86, mode="confirm"):
+    def summarize_hi_gene_counts(self, patient_origins=None,
+                                 chromosomes: Optional[Union[str, List[str]]] = None,
+                                 cnv_changes: Optional[Union[str, List[str]]] = None,
+                                 pLI_threshold=0.9, HI_threshold=10,
+                                 phaplo_threshold=0.86, mode="confirm"):
         params = dict(pLI_threshold=pLI_threshold, HI_threshold=HI_threshold,
                       phaplo_threshold=phaplo_threshold, mode=mode)
         patients = self.filter_by_origin(patient_origins)
+        cnvs = patients.filter_cnvs(chromosomes, cnv_changes)
         counts = [len([gene for gene in cnv.genes
                        if gene.is_haploinsufficient(**params)])
-                  for patient in patients for cnv in patient.cnvs]
+                  for cnv in cnvs]
         summary = pd.DataFrame(counts, columns=["HI Gene Count"]).describe()
         return summary
 
-    def count_cnvs_with_dominant_genes(self, patient_origins=None):
+    def count_cnvs_with_dominant_genes(self, patient_origins=None,
+                                       chromosomes: Optional[Union[str, List[str]]] = None,
+                                       cnv_changes: Optional[Union[str, List[str]]] = None):
         patients = self.filter_by_origin(patient_origins)
+        cnvs = patients.filter_cnvs(chromosomes, cnv_changes)
         de_count = sum(any([gene.dominant for gene in cnv.genes])
-                       for patient in patients for cnv in patient.cnvs)
+                       for cnv in cnvs)
         return de_count
 
     def summary(self):
