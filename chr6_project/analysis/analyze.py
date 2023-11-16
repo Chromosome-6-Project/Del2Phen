@@ -210,7 +210,10 @@ class DataManager:
         return drop_list
 
     @staticmethod
-    def filter_patients(patient_dict, drop_list=None, remove_ungenotyped=True,
+    def filter_patients(patient_dict, drop_list=None,
+                        chromosomes: Optional[Union[str, List[str]]] = None,
+                        cnv_changes: Optional[Union[str, List[str]]] = None,
+                        remove_uncompared=True, remove_ungenotyped=True,
                         remove_unphenotyped=True, remove_unsubmitted=True):
         if drop_list is None:
             drop_list = set()
@@ -218,6 +221,7 @@ class DataManager:
             name: patient for name, patient in patient_dict.items()
             if all([
                 name not in drop_list,
+                not remove_uncompared or patient.filter_cnvs(chromosomes, cnv_changes),
                 not remove_ungenotyped or patient.genotypes,
                 not remove_unphenotyped or patient.phenotypes,
                 not remove_unsubmitted or patient.check_if_submitted()
@@ -305,7 +309,7 @@ def analyze_online(username, password,
                    cnv_changes: Optional[Union[str, List[str]]] = None,
                    drop_list_file=None, hpo_termset_yaml=None,
                    expand_hpos=False, remove_ungenotyped=True, remove_unphenotyped=True,
-                   remove_unsubmitted=True):
+                   remove_unsubmitted=True, remove_uncompared=True):
     print("Loading geneset...")
     geneset = make_geneset()
 
@@ -324,8 +328,11 @@ def analyze_online(username, password,
     if drop_list_file is not None:
         print("Filtering patients...")
         drop_list = DataManager.read_patient_drop_list(drop_list_file)
-        patients = DataManager.filter_patients(patients, drop_list, remove_ungenotyped,
-                                               remove_unphenotyped, remove_unsubmitted)
+    else:
+        drop_list = None
+    patients = DataManager.filter_patients(patients, drop_list, chromosomes, cnv_changes,
+                                           remove_uncompared, remove_ungenotyped,
+                                           remove_unphenotyped, remove_unsubmitted)
 
     print("Building patient database...")
     patients = PatientDatabase(patients)
