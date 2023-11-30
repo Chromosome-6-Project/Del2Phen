@@ -92,7 +92,8 @@ def build_network_edges(comparison_table):
     """Build patient-patient edge objects from comparison table."""
     edges = []
     for intersect in comparison_table:
-        if intersect.loci_shared_size == 0 or intersect.self_compare:
+        # if intersect.loci_shared_size == 0 or intersect.self_compare:
+        if intersect.self_compare:
             continue
 
         id1, id2 = intersect.ids
