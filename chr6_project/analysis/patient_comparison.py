@@ -333,14 +333,19 @@ class ComparisonTable:
                                   dom_gene_match=True, hpo_similarity=0,
                                   include_self=False, as_patient_database=False):
         intersects = [inter for inter in self.lookup(patient_id, "all") if all(
-            [inter.length_similarity >= length_similarity,
-             inter.loci_similarity >= loci_similarity,
-             inter.gene_similarity >= gene_similarity,
-             inter.hi_gene_similarity >= hi_gene_similarity,
-             inter.dom_gene_match or not dom_gene_match,
-             inter.hpo_similarity >= hpo_similarity,
-             not inter.self_compare or include_self]
+            [
+                inter.length_similarity >= length_similarity,
+                inter.loci_similarity >= loci_similarity,
+                inter.gene_similarity >= gene_similarity,
+                inter.hi_gene_similarity >= hi_gene_similarity,
+                inter.dom_gene_match or not dom_gene_match,
+                inter.hpo_similarity >= hpo_similarity,
+                #not inter.self_compare or include_self
+                not inter.self_compare
+                ]
             )]
+        if include_self:
+            intersects.append(self.lookup(patient_id))
         if as_patient_database:
             patients = [inter.get_other_patient(patient_id) for inter in intersects]
             patients = {patient.id: patient for patient in patients}
