@@ -34,7 +34,11 @@ def setup_custom_phenotype_data():
         Phenoterm("Mood [affective] disorders", "ICD10:F30-39", "ICD10_F30_F39"),
         Phenoterm("Adverse drug effects", "ICD10:Y40-59", "ICD10_Y40_Y59"),
         Phenoterm("Temperature dysregulation", "C6:temp_dysregulation", "temp_dysregulation"),
-        Phenoterm("Autistic disorder", "C6:autistic_disorder", "autistic_disorder")
+        Phenoterm("Autistic disorder", "C6:autistic_disorder", "autistic_disorder"),
+        Phenoterm("Behaviour helpful", "C6:behaviour_helpful", "behaviour_helpful"),
+        Phenoterm("Behaviour social", "C6:behaviour_social", "behaviour_social"),
+        Phenoterm("Slow metabolism of medicine", "C6:slow_metabolism_meds", "slow_metabolism_meds"),
+        Phenoterm("Convulsions of newborn", "ICD10:P90", "ICD10_P90")
         ]
     return custom_terms
 
