@@ -16,7 +16,7 @@ def read_hpo_ontology():
 
 
 def get_default_termset_yaml_path():
-    yaml_path = list(pkg_resources.path(resources, "default_termset2.yaml").gen)[0]
+    yaml_path = list(pkg_resources.path(resources, "default_termset3.yaml").gen)[0]
     return yaml_path
 
 
