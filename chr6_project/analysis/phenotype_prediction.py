@@ -154,6 +154,8 @@ class PredictionDatabase:
         precisions = self.calculate_individual_precision(phenotypes, rel_threshold,
                                                          abs_threshold, use_adjusted_frequency,
                                                          group_size_threshold)
+        for pid in precisions.keys():
+            precisions[pid]["Group_Size"] = self.predictions[pid].group_size
         table = pd.DataFrame.from_dict(precisions, orient="index")
         return table
 
