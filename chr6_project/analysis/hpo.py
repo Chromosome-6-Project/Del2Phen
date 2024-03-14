@@ -20,6 +20,11 @@ def get_default_termset_yaml_path():
     return yaml_path
 
 
+def get_default_custom_phenotypes_path():
+    path = list(pkg_resources.path(resources, "custom_phenotypes.tsv").gen)[0]
+    return path
+
+
 def read_custom_termset_yaml(path):
     with open(path) as infile:
         termset_info = yaml.safe_load(infile)
@@ -29,18 +34,23 @@ def read_custom_termset_yaml(path):
 Phenoterm = namedtuple("Phenoterm", ["name", "term_id", "c6_field"])
 
 
-def setup_custom_phenotype_data():
-    custom_terms = [
-        Phenoterm("Mood [affective] disorders", "ICD10:F30-39", "ICD10_F30_F39"),
-        Phenoterm("Adverse drug effects", "ICD10:Y40-59", "ICD10_Y40_Y59"),
-        Phenoterm("Temperature dysregulation", "C6:temp_dysregulation", "temp_dysregulation"),
-        Phenoterm("Autistic disorder", "C6:autistic_disorder", "autistic_disorder"),
-        Phenoterm("Behaviour helpful", "C6:behaviour_helpful", "behaviour_helpful"),
-        Phenoterm("Behaviour social", "C6:behaviour_social", "behaviour_social"),
-        Phenoterm("Slow metabolism of medicine", "C6:slow_metabolism_meds", "slow_metabolism_meds"),
-        Phenoterm("Convulsions of newborn", "ICD10:P90", "ICD10_P90")
-        ]
+def setup_custom_phenotype_data(custom_phenotype_file):
+    with open(custom_phenotype_file) as infile:
+        custom_phenotypes = infile.readlines()
+    custom_phenotypes = [line.rstrip().split("\t") for line in custom_phenotypes]
+    custom_terms = [Phenoterm(*term) for term in custom_phenotypes]
     return custom_terms
+    # custom_terms = [
+    #     Phenoterm("Mood [affective] disorders", "ICD10:F30-39", "ICD10_F30_F39"),
+    #     Phenoterm("Adverse drug effects", "ICD10:Y40-59", "ICD10_Y40_Y59"),
+    #     Phenoterm("Temperature dysregulation", "C6:temp_dysregulation", "temp_dysregulation"),
+    #     Phenoterm("Autistic disorder", "C6:autistic_disorder", "autistic_disorder"),
+    #     Phenoterm("Behaviour helpful", "C6:behaviour_helpful", "behaviour_helpful"),
+    #     Phenoterm("Behaviour social", "C6:behaviour_social", "behaviour_social"),
+    #     Phenoterm("Slow metabolism of medicine", "C6:slow_metabolism_meds", "slow_metabolism_meds"),
+    #     Phenoterm("Convulsions of newborn", "ICD10:P90", "ICD10_P90")
+    #     ]
+    # return custom_terms
 
 
 def make_custom_phenotype_terms(ontology, custom_phenotype_terms):
