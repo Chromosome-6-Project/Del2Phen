@@ -12,9 +12,11 @@ MRI/CT balance scan outcome normal	C6:balance_scan_normal	balance_scan_normal
 Aggressive towards others	C6:behaviour_aggressive_others	behaviour_aggressive_others
 Aggressive towards self (outbursts, tantrums)	C6:behaviour_aggressive_self	behaviour_aggressive_self
 Easily upset	C6:behaviour_easily_upset	behaviour_easily_upset
+Behaviour helpful	C6:behaviour_helpful	behaviour_helpful
 Intervention needed for behavioural problems in form of medication	C6:behaviour_intervention_medication	behaviour_intervention_medication
 Intervention needed for behavioural problems in form of therapy	C6:behaviour_intervention_therapy	behaviour_intervention_therapy
 Quiet behaviour	C6:behaviour_quiet	behaviour_quiet
+Behaviour social	C6:behaviour_social	behaviour_social
 Withdrawn behaviour	C6:behaviour_withdrawn	behaviour_withdrawn
 Medication needed for high blood pressure	C6:blood_pressure_meds	blood_pressure_meds
 Type of brain imaging	C6:brain_img_type	brain_img_type
@@ -37,16 +39,6 @@ Hospitalization after birth for congenital problems	C6:hospitalization_congenita
 Hospitalization after birth for infection	C6:hospitalization_infection	hospitalization_infection
 Hospitalization after birth for maternal reasons	C6:hospitalization_maternal	hospitalization_maternal
 Hydrocephalus (brain)	C6:hydrocephalus_brain	hydrocephalus_brain
-F43.1: Post-traumatic stress disorder	ICD10:F43.1	ICD10_F43_1
-F84.5: Asperger syndrome	ICD10:F84.5	ICD10_F84_5
-F84.8: Other pervasive developmental disorders	ICD10:F84.8	ICD10_F84_8
-G40: Epilepsy	ICD10:G40	ICD10_G40
-I27.0: Primary pulmonary hypertension	ICD10:I27.0	ICD10_I27_0
-P90: Convulsions of newborn (newborn seizures)	ICD10:P90	ICD10_P90
-Y40: Systemic antibiotics	ICD10:Y40	ICD10_Y40
-Y46.6: Other and unspecified antiepileptics	ICD10:Y46.6	ICD10_Y46_6
-Y57: Other and unspecified drugs and medicaments	ICD10:Y57	ICD10_Y57
-Brugada syndrome	ORPHA:130	ORPHA_130
 Over-reactivity of mouth region	C6:over_reactivity_mouth	over_reactivity_mouth
 Over-reactivity of the palms of the hands and/or soles of the foot	C6:over_reactivity_palms_soles	over_reactivity_palms_soles
 Operation needed for ptosis	C6:ptosis_operation	ptosis_operation
@@ -54,5 +46,18 @@ Rumination	C6:rumination	rumination
 Sleeping problem medication	C6:sleep_problem_meds	sleep_problem_meds
 Slow metabolism of medication found by bloodtest	C6:slow_metabolism_bloodtest	slow_metabolism_bloodtest
 Slow metabolism of medication found by experience	C6:slow_metabolism_exp	slow_metabolism_exp
+Slow metabolism of medicine	C6:slow_metabolism_meds	slow_metabolism_meds
 Specific food allergy	C6:specific_food_allergy	specific_food_allergy
 Temperature dysregulation necessitating an incubator	C6:temp_dysregulation	temp_dysregulation
+Mood [affective] disorders	ICD10:F30-39	ICD10_F30_F39
+F43.1: Post-traumatic stress disorder	ICD10:F43.1	ICD10_F43_1
+F84.5: Asperger syndrome	ICD10:F84.5	ICD10_F84_5
+F84.8: Other pervasive developmental disorders	ICD10:F84.8	ICD10_F84_8
+G40: Epilepsy	ICD10:G40	ICD10_G40
+I27.0: Primary pulmonary hypertension	ICD10:I27.0	ICD10_I27_0
+P90: Convulsions of newborn (newborn seizures)	ICD10:P90	ICD10_P90
+Y40: Systemic antibiotics	ICD10:Y40	ICD10_Y40
+Adverse drug effects	ICD10:Y40-59	ICD10_Y40_Y59
+Y46.6: Other and unspecified antiepileptics	ICD10:Y46.6	ICD10_Y46_6
+Y57: Other and unspecified drugs and medicaments	ICD10:Y57	ICD10_Y57
+Brugada syndrome	ORPHA:130	ORPHA_130
