@@ -319,8 +319,13 @@ def analyze_online(username, password,
     print("Organizing patient HPO terms...")
     if hpo_termset_yaml is None:
         hpo_termset_yaml = c6_hpo.get_default_termset_yaml_path()
-    ontology, hpos, termset = c6_hpo.make_c6_hpo_online(hpos, phenotypes,
-                                                        hpo_termset_yaml, expand_hpos)
+    ontology, hpos, termset = c6_hpo.make_c6_hpo_online(
+        patient_hpo_data=hpos,
+        patient_pheno_data=phenotypes,
+        custom_termset_yaml=hpo_termset_yaml,
+        custom_phenotypes=None,
+        recursive_expansion=expand_hpos
+        )
 
     print("Building patient objects...")
     patients = DataManager.make_patients(genotypes, phenotypes, geneset, hpos, ontology)
