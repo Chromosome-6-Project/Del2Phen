@@ -196,10 +196,12 @@ def make_c6_hpo(patient_hpo_file, custom_termset_yaml=None, recursive_expansion=
 
 
 def make_c6_hpo_online(patient_hpo_data, patient_pheno_data, custom_termset_yaml=None,
-                       recursive_expansion=False):
+                       custom_phenotypes=None, recursive_expansion=False):
     ontology = read_hpo_ontology()
 
-    custom_phenotype_terms = setup_custom_phenotype_data()
+    if custom_phenotypes is None:
+        custom_phenotypes = get_default_custom_phenotypes_path()
+    custom_phenotype_terms = setup_custom_phenotype_data(custom_phenotypes)
     make_custom_phenotype_terms(ontology, custom_phenotype_terms)
     patient_hpo_data = merge_patient_data(patient_hpo_data,
                                           patient_pheno_data,
