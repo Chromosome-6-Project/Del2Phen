@@ -19,7 +19,6 @@ Quiet behaviour	C6:behaviour_quiet	behaviour_quiet
 Behaviour social	C6:behaviour_social	behaviour_social
 Withdrawn behaviour	C6:behaviour_withdrawn	behaviour_withdrawn
 Medication needed for high blood pressure	C6:blood_pressure_meds	blood_pressure_meds
-Type of brain imaging	C6:brain_img_type	brain_img_type
 Medication needed for cardiomyopathy	C6:cardiomyopathy_meds	cardiomyopathy_meds
 Cerebellum dysfunction	C6:cerebellum_dysfunction	cerebellum_dysfunction
 Using communication aids	C6:communication_aids	communication_aids
