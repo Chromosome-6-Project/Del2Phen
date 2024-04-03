@@ -948,6 +948,7 @@ def predict_phenotypes_for_cnv_strings(cnv_strings: list[str],
     cnvs = [_convert_cnv_str_to_cnv(cnv_string) for cnv_string in cnv_strings]
     comparison_params = dict(
         comparison_database=comparison_database,
+        geneset=geneset,
         chromosomes=chromosomes,
         cnv_changes=cnv_changes,
         length_similarity=length_similarity, loci_similarity=loci_similarity,
