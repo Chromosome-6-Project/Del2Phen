@@ -10,7 +10,8 @@ from typing import List, Optional, Union
 import numpy as np
 import pandas as pd
 
-from chr6_project.analysis.data_objects import Patient, PatientDatabase
+from chr6_project.analysis.data_objects import Patient, PatientDatabase, CNV
+from chr6_project.analysis.gene_set import GeneSet
 from chr6_project.analysis.phenotype_homogeneity import (
     PhenotypePrevalence,
     PatientGroupPrevalences,
@@ -893,4 +894,68 @@ def predict_phenotypes_for_patient(patient: Patient, comparison_database: Compar
                        "true_count", "false_count", "unsure_count", "na_count"]]
         table = table.set_index("trait_id")
         return table
+    return predictions
+
+
+def predict_phenotypes_for_cnvs(cnvs: list[CNV], geneset: GeneSet,
+                                comparison_database: ComparisonTable,
+                                chromosomes: Optional[Union[str, List[str]]] = None,
+                                cnv_changes: Optional[Union[str, List[str]]] = None,
+                                length_similarity=0, loci_similarity=0,
+                                gene_similarity=0, hi_gene_similarity=0,
+                                dom_gene_match=True, hpo_similarity=0,
+                                pLI_threshold=0.9, HI_threshold=10,
+                                phaplo_threshold=0.86, mode="confirm",
+                                tabulate=False):
+    comparison_params = dict(
+        comparison_database=comparison_database,
+        chromosomes=chromosomes,
+        cnv_changes=cnv_changes,
+        length_similarity=length_similarity, loci_similarity=loci_similarity,
+        gene_similarity=gene_similarity, hi_gene_similarity=hi_gene_similarity,
+        dom_gene_match=dom_gene_match, hpo_similarity=hpo_similarity,
+        pLI_threshold=pLI_threshold, HI_threshold=HI_threshold,
+        phaplo_threshold=phaplo_threshold, mode=mode,
+        tabulate=tabulate
+        )
+    patient = Patient("query")
+    patient.cnvs = cnvs
+    patient.assign_genes_to_cnvs(geneset)
+    predictions = predict_phenotypes_for_patient(patient, **comparison_params)
+    return predictions
+
+
+def _convert_cnv_str_to_cnv(cnv_string: str):
+    """CNV string format is chr:start-stop:copy_number."""
+    cnv = cnv_string.split(":")
+    cnv = cnv[:1] + [int(n) for n in cnv[1].split("-")] + [int(cnv[-1])]
+    cnv = CNV(*cnv, ID="query")
+    return cnv
+
+
+def predict_phenotypes_for_cnv_strings(cnv_strings: list[str],
+                                       geneset: GeneSet,
+                                       comparison_database: ComparisonTable,
+                                       chromosomes: Optional[Union[str, List[str]]] = None,
+                                       cnv_changes: Optional[Union[str, List[str]]] = None,
+                                       length_similarity=0, loci_similarity=0,
+                                       gene_similarity=0, hi_gene_similarity=0,
+                                       dom_gene_match=True, hpo_similarity=0,
+                                       pLI_threshold=0.9, HI_threshold=10,
+                                       phaplo_threshold=0.86, mode="confirm",
+                                       tabulate=False):
+    """CNV string format is chr:start-stop:copy_number."""
+    cnvs = [_convert_cnv_str_to_cnv(cnv_string) for cnv_string in cnv_strings]
+    comparison_params = dict(
+        comparison_database=comparison_database,
+        chromosomes=chromosomes,
+        cnv_changes=cnv_changes,
+        length_similarity=length_similarity, loci_similarity=loci_similarity,
+        gene_similarity=gene_similarity, hi_gene_similarity=hi_gene_similarity,
+        dom_gene_match=dom_gene_match, hpo_similarity=hpo_similarity,
+        pLI_threshold=pLI_threshold, HI_threshold=HI_threshold,
+        phaplo_threshold=phaplo_threshold, mode=mode,
+        tabulate=tabulate
+        )
+    predictions = predict_phenotypes_for_cnvs(cnvs, **comparison_params)
     return predictions
