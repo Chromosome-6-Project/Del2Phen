@@ -1,25 +1,20 @@
-#!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """The Chromosome 6 Project - Data objects.
 
 @author: T.D. Medina
 """
 
 from collections import defaultdict, namedtuple
-import csv
-from datetime import datetime
+from textwrap import dedent
 from typing import Dict, List, Optional, Set, Union
 
 import pandas as pd
-from pronto import Term
 from numpy import mean, median
 
+from chr6_project.analysis.gene_set import Gene, GeneSet, is_haploinsufficient
 from chr6_project.analysis.utilities import (
     merge_range_list,
     overlap,
-    REFERENCE_CHR,
     )
-from chr6_project.analysis.gene_set import Gene, GeneSet, is_haploinsufficient
 
 SequenceContig = namedtuple("SequenceContig",
                             ["name", "length", "cumulative_start"])
@@ -59,7 +54,7 @@ class GenomeDict:
     def abs_pos(self, chromosome, position):
         """Calculate absolute position from chromosome position.
 
-        Uses genome contig order to establish relative positon within
+        Uses genome contig order to establish relative position within
         cumulative chromosome lengths.
         """
         return self[chromosome].cumulative_start + position
@@ -152,33 +147,31 @@ class Cytomap:
 class CNV:
     """Data object containing CNV information."""
 
-    def __init__(self, chromosome, start, stop, change, ID=None, genes=None):
-        self.id = ID
+    def __init__(self, chromosome, start, stop, copy_number, id=None, genes=None, **kwargs):
+        self.id = id
         self.chromosome = str(chromosome)
         self.range = range(start, stop + 1)
-        self.change = change
+        self.copy_number = copy_number
         self.genes = genes
 
     def __len__(self):
         return self.length
 
     def __repr__(self):
-        """Make string representation of object."""
         string = (
             "CNV("
             f"chromosome='{self.chromosome}', "
             f"start={self.start}, "
             f"stop={self.stop}, "
-            f"change='{self.change}', "
-            f"ID='{self.id}'"
+            f"copy_number='{self.copy_number}', "
+            f"id='{self.id}'"
             ")"
             )
         return string
 
     def __str__(self):
-        """Make pretty string of object."""
         string = ("CNV:\n"
-                  f"  Change = {self.change}\n"
+                  f"  Copy number = {self.copy_number}\n"
                   f"  Locus = {self.chromosome}:"
                   f"{self.range.start}-{self.range.stop}\n"
                   f"  Length = {self.length:,} bp")
@@ -196,23 +189,18 @@ class CNV:
     def length(self):
         return len(self.range)
 
+    def set_genes(self, geneset: GeneSet):
+        """Assign overlapping genes to CNV based on provided GeneSet object."""
+        self.genes = geneset.get_locus(self.chromosome, self.start, self.stop)
+
 
 class Patient:
-    """Chromosome 6 Project patient data."""
+    """Patient CNV data object."""
 
-    def __init__(self, ID):
-        self.id = ID
-        self.genotypes = []
-        self.phenotypes = []
+    def __init__(self, patient_id):
+        self.id = patient_id
+        self.phenotypes = dict()
         self.cnvs = []
-        # self.affected_genes = {}
-        # self.affected_gene_ids = {}
-        self.hpo = {}
-        self.predictions = {}
-
-        self.origin = None
-        self.birthdate = None
-        self.age = None
 
     def __eq__(self, other):
         if not isinstance(other, self.__class__):
@@ -220,43 +208,40 @@ class Patient:
         return self.id == other.id
 
     def __repr__(self):
-        """Construct string representation."""
         return f"Patient(id={self.id})"
 
-    def extract_cnvs(self):
-        """Pull CNV data from genotype information."""
-        cnvs = []
-        for genotype in self.genotypes:
-            if "Start_positie_in_Hg19" not in genotype or "Stop_positie_in_Hg19" not in genotype:
-                continue
-            chrom = genotype["Chromosoom"]
-            start = genotype["Start_positie_in_Hg19"]
-            stop = genotype["Stop_positie_in_Hg19"]
-            change = genotype["imbalance"]
-
-            if chrom not in REFERENCE_CHR or not start or not stop:
-                continue
-            cnvs.append(CNV(chrom, start, stop, change, self.id))
-        cnvs = sorted(cnvs, key=lambda x: REFERENCE_CHR.index(x.chromosome))
-        return cnvs
-
     def filter_cnvs(self, chromosomes: Optional[Union[str, List[str]]] = None,
-                    cnv_changes: Optional[Union[str, List[str]]] = None) -> List[CNV]:
+                    copy_numbers: Optional[Union[int, List[int]]] = None) -> List[CNV]:
+        """Return a list of CNVs filtered by affected chromosome and copy number.
+
+        Desired chromosome may be provided as a string, or list of strings for
+        multiple chromosomes. Desired copy number may be provided as an integer, or
+        list of integers for multiple copy numbers. Leaving either argument empty
+        defaults to not removing any CNVs by that argument. Example: filter_cnvs(
+        chromosomes=['6', '12'], copy_numbers=3) will return all CNVs for this patient
+        that are on either chromosome 6 or 12 which are a single duplication, i.e.,
+        copy number of 3.
+        """
         if isinstance(chromosomes, str):
             chromosomes = {chromosomes}
-        if isinstance(cnv_changes, str):
-            cnv_changes = {cnv_changes}
+        if isinstance(copy_numbers, int):
+            copy_numbers = {copy_numbers}
         cnvs = [cnv for cnv in self.cnvs
                 if (chromosomes is None or cnv.chromosome in chromosomes)
-                and (cnv_changes is None or cnv.change in cnv_changes)]
+                and (copy_numbers is None or cnv.copy_number in copy_numbers)]
         return cnvs
 
     def get_median_cnv_position(
             self,
             chromosome: str,
-            cnv_changes: Optional[Union[str, List[str]]] = None
+            copy_numbers: Optional[Union[int, List[int]]] = None
             ) -> Optional[int]:
-        cnvs = self.filter_cnvs(chromosome, cnv_changes)
+        """Calculate median position of all CNVs on a given chromosome.
+
+        Median position is calculated as the median center point of all patient CNVs.
+        CNVs can be filtered by specifying desired copy number.
+        """
+        cnvs = self.filter_cnvs(chromosome, copy_numbers)
         if not cnvs:
             return None
         cnv_median = int(median([(cnv.range.start + cnv.range.stop)/2 for cnv in cnvs]))
@@ -265,8 +250,13 @@ class Patient:
     def get_mean_cnv_position(
             self,
             chromosome: str,
-            cnv_changes: Optional[Union[str, List[str]]] = None) -> Optional[float]:
-        cnvs = self.filter_cnvs(chromosome, cnv_changes)
+            copy_numbers: Optional[Union[int, List[int]]] = None) -> Optional[float]:
+        """Calculate mean position of all CNVs on a given chromosome.
+
+        Mean position is calculated as the mean center point of all patient CNVs.
+        CNVs can be filtered by specifying desired copy number.
+        """
+        cnvs = self.filter_cnvs(chromosome, copy_numbers)
         if not cnvs:
             return None
         cnv_mean = mean([(cnv.range.start + cnv.range.stop)/2 for cnv in cnvs])
@@ -275,9 +265,13 @@ class Patient:
     def get_affected_ranges(
             self,
             chromosomes: Optional[Union[str, List[str]]] = None,
-            cnv_changes: Optional[Union[str, List[str]]] = None) -> Dict[str, range]:
-        """Get CNV ranges from selected CNVs."""
-        cnvs = self.filter_cnvs(chromosomes, cnv_changes)
+            copy_numbers: Optional[Union[int, List[int]]] = None) -> Dict[str, range]:
+        """Return all ranges affected by a CNV.
+
+        Overlapping CNVs are combined into a single range. CNVs can be filtered by
+        specifying desired copy number and/or chromosomes.
+        """
+        cnvs = self.filter_cnvs(chromosomes, copy_numbers)
         ranges = defaultdict(list)
         for cnv in cnvs:
             ranges[cnv.chromosome].append(cnv.range)
@@ -286,26 +280,35 @@ class Patient:
         return ranges
 
     def assign_genes_to_cnvs(self, gene_set_obj: GeneSet) -> None:
-        """Set genes affected per CNV."""
+        """Assign overlapping genes to each patient CNV based on provided GeneSet
+        object."""
         for cnv in self.cnvs:
             cnv.genes = gene_set_obj.get_locus(cnv.chromosome, cnv.range.start,
                                                cnv.range.stop)
 
     def get_all_genes(self, chromosomes: Optional[Union[str, List[str]]] = None,
-                      cnv_changes: Optional[Union[str, List[str]]] = None) -> Set[Gene]:
-        """Get all genes affected by selected CNVs."""
-        cnvs = self.filter_cnvs(chromosomes, cnv_changes)
+                      copy_numbers: Optional[Union[int, List[int]]] = None) -> Set[Gene]:
+        """Return all genes overlapping selected CNVs.
+
+        CNVs can be filtered by specifying desired copy number and/or chromosomes.
+        """
+        cnvs = self.filter_cnvs(chromosomes, copy_numbers)
         all_genes = {gene for cnv in cnvs for gene in cnv.genes}
         return all_genes
 
     def get_all_HI_genes(self, chromosomes: Optional[Union[str, List[str]]] = None,
-                         cnv_changes: Optional[Union[str, List[str]]] = None,
+                         copy_numbers: Optional[Union[int, List[int]]] = None,
                          pLI_threshold: float = 0.9,
                          HI_threshold: float = 10,
                          phaplo_threshold: float = .86,
                          mode="confirm") -> Set[Gene]:
-        """Get all haploinsufficient genes affected by selected CNVs."""
-        cnvs = self.filter_cnvs(chromosomes, cnv_changes)
+        """Return all haploinsufficient genes overlapping selected CNVs.
+
+        The definition of a predicted haploinsufficient gene can be altered by
+        adjusting the relevant score thresholds. CNVs can be filtered by specifying
+        desired copy number and/or chromosomes.
+        """
+        cnvs = self.filter_cnvs(chromosomes, copy_numbers)
         hi_genes = {gene for cnv in cnvs for gene in cnv.genes
                     if is_haploinsufficient(gene, pLI_threshold, HI_threshold,
                                             phaplo_threshold, mode)}
@@ -314,41 +317,29 @@ class Patient:
     def get_all_dominant_genes(
             self,
             chromosomes: Optional[Union[str, List[str]]] = None,
-            cnv_changes: Optional[Union[str, List[str]]] = None) -> Set[Gene]:
-        cnvs = self.filter_cnvs(chromosomes, cnv_changes)
+            copy_numbers: Optional[Union[int, List[int]]] = None) -> Set[Gene]:
+        """Return all dominant-effect genes overlapping selected CNVs.
+
+        Dominant-effect genes are labelled during GeneSet creation and are
+        user-defined. CNVs can be filtered by specifying desired copy number and/or
+        chromosomes.
+        """
+        cnvs = self.filter_cnvs(chromosomes, copy_numbers)
         dom_genes = {gene for cnv in cnvs for gene in cnv.genes
                      if gene.dominant}
         return dom_genes
 
-    def filter_hpos_by_response(self, responses: Union[str, List[str]]) -> Set[Term]:
-        if isinstance(responses, str):
-            responses = {responses}
-        filtered = {term for term, response in self.hpo.items()
-                    if response in responses}
-        return filtered
-
-    def convert_birthday_to_datetime(self) -> None:
-        if not self.phenotypes:
-            return
-        if "birthdate" not in self.phenotypes[0] or not self.phenotypes[0]["birthdate"]:
-            return
-        self.birthdate = datetime.strptime(
-            self.phenotypes[0]["birthdate"],
-            "%Y-%m-%d")
-        years = datetime.today().year - self.birthdate.year
-        if (datetime.today().month <= self.birthdate.year
-                and datetime.today().day < self.birthdate.day):
-            years -= 1
-        self.age = years
-        return
-
-    def check_if_submitted(self) -> bool:
-        submits = {status for pheno in self.phenotypes
-                   for status in pheno["submit_status"]}
-        return "SUBMITTED" in submits
+    # TODO: Needs to be updated to reflect Boolean responses, and to somehow allow
+    #  searching for NA responses.
+    # def filter_phenotypes_by_response(self, responses: Union[bool, List[str]]) -> Set[
+    #     Term]:
+    #     if isinstance(responses, bool):
+    #         responses = {responses}
+    #     filtered = {term for term, response in self.phenotypes.items()
+    #                 if response in responses}
+    #     return filtered
 
 
-# TODO: Add a method to add a patient.
 class PatientDatabase:
     """Database containing all Patient objects."""
 
@@ -357,7 +348,7 @@ class PatientDatabase:
         self.index = self._make_index()
         self.cnvs = self._organize_cnvs()
         self.size = len(self.patients)
-        self.hpos = {hpo for patient in self for hpo in patient.hpo}
+        self.phenotypes = {pheno for patient in self for pheno in patient.phenotypes}
 
     def __len__(self):
         return self.size
@@ -367,12 +358,10 @@ class PatientDatabase:
         return self.patients[key]
 
     def __iter__(self):
-        """Initialize iterable."""
         self.__iteri__ = 0
         return self
 
     def __next__(self):
-        """Iterate iterable."""
         if self.__iteri__ == self.size:
             raise StopIteration
         result = self.patients[self.index[self.__iteri__]]
@@ -388,7 +377,7 @@ class PatientDatabase:
         """Get and organize CNVs from all patients."""
         cnvs = sorted(
             [cnv for patient in self.patients.values() for cnv in patient.cnvs],
-            key=lambda x: x.range.start
+            key=lambda x: x.start
             )
         cnv_dict = {chromosome: [] for chromosome in {cnv.chromosome for cnv in cnvs}}
         for cnv in cnvs:
@@ -396,60 +385,57 @@ class PatientDatabase:
         return cnv_dict
 
     def list_ids(self):
+        """Return list of all patient IDs."""
         id_list = list(self.patients.keys())
         return id_list
 
     def add_patient(self, patient: Patient):
-        self.patients[patient.id] = Patient
+        """Add a Patient object to the patient database."""
+        self.patients[patient.id] = patient
         self.index[max(self.index)+1] = patient.id
         self.size += 1
-        self.hpos.update(set(patient.hpo))
+        self.phenotypes.update(set(patient.phenotypes))
         for cnv in patient.cnvs:
             self.cnvs[cnv.chromosome].append(cnv)
 
-    def filter_by_origin(self, patient_origins=None):
-        if patient_origins is None:
-            return self
-        if isinstance(patient_origins, str):
-            patient_origins = {patient_origins}
-        patients = PatientDatabase({patient.id: patient for patient in self
-                                    if patient.origin in patient_origins})
-        return patients
-
-    def split_by_arm(self):
-        p_patients = {}
-        q_patients = {}
-        for patient in self:
-            for cnv in patient.cnvs:
-                if cnv.range.start < 61000000:
-                    p_patients[patient.id] = patient
-                if cnv.range.stop > 61000000:
-                    q_patients[patient.id] = patient
-        return PatientDatabase(p_patients), PatientDatabase(q_patients)
-
     def filter_cnvs(self,
                     chromosomes: Optional[Union[str, List[str]]] = None,
-                    cnv_changes: Optional[Union[str, List[str]]] = None) -> List[CNV]:
+                    copy_numbers: Optional[Union[int, List[int]]] = None) -> List[CNV]:
+        """Return a list of CNVs from all patients filtered by chromosome and copy number.
+
+        Desired chromosome may be provided as a string, or list of strings for
+        multiple chromosomes. Desired copy number may be provided as an integer, or
+        list of integers for multiple copy numbers. Leaving either argument empty
+        defaults to not removing any CNVs by that argument. Example: filter_cnvs(
+        chromosomes=['6', '12'], copy_numbers=3) will return all CNVs for this patient
+        that are on either chromosome 6 or 12 which are a single duplication, i.e.,
+        copy number of 3.
+        """
         if isinstance(chromosomes, str):
             chromosomes = {chromosomes}
         elif chromosomes is None:
             chromosomes = set(self.cnvs.keys())
-        if isinstance(cnv_changes, str):
-            cnv_changes = {cnv_changes}
+        if isinstance(copy_numbers, int):
+            copy_numbers = {copy_numbers}
 
         cnvs = [cnv for chromosome in chromosomes for cnv in self.cnvs[chromosome]
-                if (cnv_changes is None or cnv.change in cnv_changes)]
+                if (copy_numbers is None or cnv.copy_number in copy_numbers)]
         return cnvs
 
     def get_median_cnv_position(
             self,
             chromosome: str,
-            cnv_changes: Optional[Union[str, List[str]]] = None
+            copy_numbers: Optional[Union[int, List[int]]] = None
             ) -> Optional[int]:
+        """Calculate median position of CNVs from all patients on a given chromosome.
+
+        Median position is calculated as the median center point of all patient CNVs.
+        CNVs can be filtered by specifying desired copy number.
+        """
         if chromosome not in self.cnvs:
             return None
-        cnvs = self.filter_cnvs(chromosome, cnv_changes)
-        cnv_median = median([(cnv.range.start + cnv.range.stop)/2
+        cnvs = self.filter_cnvs(chromosome, copy_numbers)
+        cnv_median = median([(cnv.start + cnv.stop)/2
                              for cnv in cnvs])
         cnv_median = int(cnv_median)
         return cnv_median
@@ -457,155 +443,86 @@ class PatientDatabase:
     def get_mean_cnv_position(
             self,
             chromosome: str,
-            cnv_changes: Optional[Union[str, List[str]]] = None
+            copy_numbers: Optional[Union[int, List[int]]] = None
             ) -> Optional[int]:
+        """Calculate mean position of CNVs from all patients on a given chromosome.
+
+        Mean position is calculated as the mean center point of all patient CNVs.
+        CNVs can be filtered by specifying desired copy number.
+        """
         if chromosome not in self.cnvs:
             return None
-        cnvs = self.filter_cnvs(chromosome, cnv_changes)
-        cnv_mean = mean([(cnv.range.start + cnv.range.stop)/2
+        cnvs = self.filter_cnvs(chromosome, copy_numbers)
+        cnv_mean = mean([(cnv.start + cnv.stop)/2
                          for cnv in cnvs])
         return cnv_mean
 
-    def remove_patients_by_cnv_type(self, cnv_changes: Union[List, Set]):
-        if isinstance(cnv_changes, str):
-            cnv_changes = {cnv_changes}
-        else:
-            cnv_changes = set(cnv_changes)
-        patients = {patient.id: patient for patient in self
-                    if cnv_changes & {cnv.change for cnv in patient.cnvs}}
-        patients = PatientDatabase(patients)
-        return patients
-
-    def add_predictions(self, predictions):
-        for patient in self:
-            patient.predictions = predictions[patient.id]
-
-    def summarize_cnv_sizes(self, patient_origins=None,
+    def summarize_cnv_sizes(self,
                             chromosomes: Optional[Union[str, List[str]]] = None,
-                            cnv_changes: Optional[Union[str, List[str]]] = None):
-        patients = self.filter_by_origin(patient_origins)
-        cnvs = patients.filter_cnvs(chromosomes, cnv_changes)
+                            copy_numbers: Optional[Union[int, List[int]]] = None):
+        cnvs = self.filter_cnvs(chromosomes, copy_numbers)
         sizes = [cnv.length for cnv in cnvs]
         summary = pd.DataFrame(sizes, columns=["CNV Sizes"]).describe()
         return summary
 
-    def summarize_hi_gene_counts(self, patient_origins=None,
+    def summarize_hi_gene_counts(self,
                                  chromosomes: Optional[Union[str, List[str]]] = None,
-                                 cnv_changes: Optional[Union[str, List[str]]] = None,
+                                 copy_numbers: Optional[Union[int, List[int]]] = None,
                                  pLI_threshold=0.9, HI_threshold=10,
                                  phaplo_threshold=0.86, mode="confirm"):
         params = dict(pLI_threshold=pLI_threshold, HI_threshold=HI_threshold,
                       phaplo_threshold=phaplo_threshold, mode=mode)
-        patients = self.filter_by_origin(patient_origins)
-        cnvs = patients.filter_cnvs(chromosomes, cnv_changes)
+        cnvs = self.filter_cnvs(chromosomes, copy_numbers)
         counts = [len([gene for gene in cnv.genes
                        if gene.is_haploinsufficient(**params)])
                   for cnv in cnvs]
         summary = pd.DataFrame(counts, columns=["HI Gene Count"]).describe()
         return summary
 
-    def count_cnvs_with_dominant_genes(self, patient_origins=None,
-                                       chromosomes: Optional[Union[str, List[str]]] = None,
-                                       cnv_changes: Optional[Union[str, List[str]]] = None):
-        patients = self.filter_by_origin(patient_origins)
-        cnvs = patients.filter_cnvs(chromosomes, cnv_changes)
+    def count_cnvs_with_dominant_genes(
+            self,
+            chromosomes: Optional[Union[str, List[str]]] = None,
+            copy_numbers: Optional[Union[int, List[int]]] = None
+            ):
+        cnvs = self.filter_cnvs(chromosomes, copy_numbers)
         de_count = sum(any([gene.dominant for gene in cnv.genes])
                        for cnv in cnvs)
         return de_count
 
-    def summary(self):
-        """Calculate summary counts."""
-        len_cnv = len([cnv for chromosome in self.cnvs.values() for cnv in chromosome])
-        summary_txt = (f"Patients: {len(self.patients)}\n"
-                       f"CNVs: {len_cnv}")
-        return summary_txt
+    def summarize(self):
+        """Print and return a summary of the patient cohort."""
+        max_cnv = max((cnv for chrom in self.cnvs.values() for cnv in chrom),
+                      key=lambda x: x.length)
+        summary = f"""
+        Patients: {self.size}
+        CNVs: {len(self.cnvs)}
+            Largest: {max_cnv.__repr__()}
+        Phenotypes: {len(self.phenotypes)}
+        """
+        print(dedent(summary))
+        summary_dict = dict(
+            patients=self.size,
+            cnvs=len(self.cnvs),
+            largest_cnv=max_cnv,
+            phenotypes=len(self.phenotypes)
+            )
+        return summary_dict
 
-    def make_phenotype_table(self):
+    def tabulate_phenotypes(self):
         """Tabulate phenotype info for all patients."""
-        all_hpos = sorted({hpo.id for hpo in self.hpos})
-        all_hpos = {name: pos for pos, name in enumerate(all_hpos)}
-        hpo_count = len(all_hpos)
+        hpo_table = {patient.id: {hpo.id: response for hpo, response in
+                                  patient.phenotypes.items()}
+                     for patient in self}
+        hpo_table = pd.DataFrame.from_dict(hpo_table, orient="index")
+        hpo_table.index.name = "id"
+        return hpo_table
 
-        header = ["patient"] + list(all_hpos.keys())
-        rows = {}
-
-        for patient in self:
-            row = [0] * hpo_count
-            for hpo in patient.hpo:
-                row[all_hpos[hpo.id]] = 1
-            row.insert(0, patient.id)
-            row = dict(zip(header, row))
-            rows[row["patient"]] = row
-        return rows
-
-    def make_gene_table(self):
-        """Tabulate gene info for all patients."""
-        all_genes = sorted(list({gene.gene_id for patient in self for gene in patient.get_all_genes()}))
-        all_genes = {name: pos for pos, name in enumerate(all_genes)}
-        gene_count = len(all_genes)
-
-        header = ["patient"] + list(all_genes.keys())
-        rows = {}
-
-        for patient in self:
-            row = [0] * gene_count
-            for gene in patient.get_all_genes():
-                row[all_genes[gene.gene_id]] = 1
-            row.insert(0, patient.id)
-
-            row = dict(zip(header, row))
-            rows[row["patient"]] = row
-        return rows
-
-    def make_genotypes_table(self, absolute_pos=True, genome_dict=None):
-        """Tabulate CNV information for all single-CNV patients."""
-        if absolute_pos and genome_dict is None:
-            raise ValueError("Asbolute positions require a reference genome dictionary.")
-        header = ["patient", "start", "length"]
-
-        rows = {}
-        for patient in self:
-            if len(patient.cnvs) != 1:
-                continue
-            cnv = patient.cnvs[0]
-            if absolute_pos:
-                row = dict(zip(header, [patient.id, genome_dict.abs_pos(cnv.chromosome, cnv.range.start), cnv.length]))
-            else:
-                row = dict(zip(header, [patient.id, cnv.range.start, cnv.length]))
-            rows[row["patient"]] = row
-        return rows
-
-    def make_combination_table(self, genotypes=True, genes=True,
-                               phenotypes=False, absolute_pos=True,
-                               genome_dict=None):
-        """Tabulate multiple types of patient data."""
-        subtables = []
-        if genotypes:
-            subtables.append(self.make_genotypes_table(absolute_pos,
-                                                       genome_dict))
-        if genes:
-            subtables.append(self.make_gene_table())
-        if phenotypes:
-            subtables.append(self.make_phenotype_table())
-
-        names = set(subtables[0].keys())
-        names.intersection_update(*[
-            set(subtable.keys()) for subtable in subtables
-            ])
-
-        rows = {}
-        for name in names:
-            row = {}
-            for subtable in subtables:
-                row.update(subtable[name])
-            rows[name] = row
-        return rows
-
-    @staticmethod
-    def write_table(table, out):
-        """Write CSV file of tabulated data."""
-        table_values = list(table.values())
-        with open(out, "w", newline="") as outfile:
-            writer = csv.DictWriter(outfile, table_values[0].keys())
-            writer.writeheader()
-            writer.writerows(table_values)
+    def tabulate_cnvs(self, chromosomes: Optional[Union[str, List[str]]] = None,
+                      copy_numbers: Optional[Union[int, List[int]]] = None):
+        """Tabulate CNV info for all patients."""
+        cnvs = self.filter_cnvs(chromosomes, copy_numbers)
+        cnv_table = [(cnv.id, cnv.chromosome, cnv.start, cnv.stop, cnv.copy_number)
+                     for cnv in cnvs]
+        cnv_table = pd.DataFrame(cnv_table, columns=["id", "chromosome", "start",
+                                                     "stop", "copy_number"])
+        return cnv_table

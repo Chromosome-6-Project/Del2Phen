@@ -1,47 +1,134 @@
 ---
-single:
+single:  
+  # - C6:behavioural_diagnosis  # Was a behavioural diagnosis made?
+  - C6:behaviour_helpful  # Helpful behaviour
+  - C6:behaviour_social  # Social behaviour
+  - C6:slow_metabolism_meds  # Abnormally slow metabolism of medication
   - HP:0000077  # Abnormality of the kidney
+  - HP:0000079  # Abnormality of the urinary system
+  - HP:0000098  # Tall stature
+  - HP:0000163  # Abnormal oral cavity morphology
   - HP:0000164  # Abnormality of the dentition
-  - HP:0000175  # Cleft palate
-  - HP:0000238  # Hydrocephalus
   - HP:0000252  # Microcephaly
   - HP:0000256  # Macrocephaly
   - HP:0000316  # Hypertelorism
   - HP:0000356  # Abnormality of the outer ear
   - HP:0000365  # Hearing impairment
+  - HP:0000366  # Abnormality of the nose
+  - HP:0000372  # Abnormality of the auditory canal
+  - HP:0000458  # Anosmia
+  - HP:0000473  # Torticollis
+  - HP:0000486  # Strabismus
+  - HP:0000504  # Abnormality of vision
+  - HP:0000508  # Ptosis
+  - HP:0000539  # Abnormality of refraction
+  - HP:0000601  # Hypotelorism
   - HP:0000639  # Nystagmus
-  - HP:0001250  # Seizure
+  - HP:0000657  # Oculomotor apraxia
+  - HP:0000718  # Aggressive behaviour (towards self + towards others)
+  - HP:0000765  # Abnormality of the thorax
+  - HP:0000772  # Abnormality of the ribs
+  - HP:0000775  # Abnormality of the diaphragm
+  - HP:0000819  # Diabetes mellitus
+  - HP:0000821  # Hypothyroidism
+  - HP:0000824  # Growth hormone deficiency
+  - HP:0000836  # Hyperthyroidism
+  - HP:0000845  # Growth hormone excess
+  - HP:0000846  # Adrenal insufficiency
+  - HP:0000873  # Diabetes insipidus
+  - HP:0000951  # Abnormality of the skin
+  - HP:0000960  # Sacral dimple
+  - HP:0001007  # Hirsutism
+  - HP:0001155  # Abnormality of the hand
+  - HP:0001250  # Seizures
   - HP:0001251  # Ataxia
   - HP:0001252  # Muscular hypotonia
-  - HP:0001273  # Abnormal corpus callosum morphology
-  - HP:0001317  # Abnormal cerebellum morphology
+  - HP:0001276  # Hypertonia
+  - HP:0001315  # Reduced tendon reflexes
+  - HP:0001347  # Hyperreflexia
+  - HP:0001357  # Plagiocephaly
+  - HP:0001363  # Craniosynostosis
+  - HP:0001371  # Flexion contracture
   - HP:0001382  # Joint hypermobility
+  - HP:0001385  # Hip dysplasia
+  - HP:0001392  # Abnormality of the liver
+  - HP:0001438  # Abnormality of the abdomen
   - HP:0001511  # Intrauterine growth retardation
+  - HP:0001520  # Large for gestational age
+  - HP:0001558  # Reduced fetal movements
+  - HP:0001561  # Poly hydramnios
+  - HP:0001562  # Oligo hydramnios
+  - HP:0001595  # Abnormality of the hair
+  - HP:0001597  # Abnormality of the nail
   - HP:0001627  # Abnormal heart morphology
-  - HP:0002019  # Constipation
+  - HP:0001638  # Cardiomyopathy
+  - HP:0001743  # Abnormality of the spleen
+  - HP:0001760  # Abnormality of the foot
+  - HP:0001871  # Abnormality of blood and blood-forming tissues
+  - HP:0001928  # Abnormality of coagulation
+  - HP:0001939  # Abnormality of metabolism/homeostasis
   - HP:0002020  # Gastroesophageal reflux
+  - HP:0002032  # Esophageal atresia
+  - HP:0002076  # Migraine
+  - HP:0002084  # Encephalocele
+  - HP:0002086  # Abnormality of the respiratory system
+  - HP:0002143  # Abnormality of the spinal cord
+  - HP:0002172  # Does your child have balance problems?
   - HP:0002360  # Sleep disturbance
+  - HP:0002414  # Spina bifida
+  - HP:0002558  # Supernumerary nipple
+  - HP:0002575  # Tracheoesophageal fistula
+  - HP:0002643  # Neonatal respiratory distress
+  - HP:0002715  # Abnormality of the immune system
+  - HP:0002717  # Adrenal overactivity
   - HP:0002719  # Recurrent infections
+  - HP:0003198  # Myopathy
+  - HP:0003468  # Abnormal vertebral morphology
   - HP:0003474  # Sensory impairment
+  - HP:0004297  # Abnormality of the biliary system
   - HP:0004322  # Short stature
-  - HP:0005656  # Positional foot deformity
+  - HP:0004378  # Abnormality of the anus
+  - HP:0006579  # Prolonged neonatal jaundice
+  - HP:0006710  # Aplasia/Hypoplasia of the clavicles
+  - HP:0008255  # Transient neonatal diabetes mellitus
+  - HP:0008373  # Puberty and gonadal disorders
+  - HP:0010628  # Facial palsy
   - HP:0010674  # Abnormality of the curvature of the vertebral column
-  - HP:0010832  # Abnormality of pain sensation
+  - HP:0010832  # Abnormal pain sensation
   - HP:0010866  # Abdominal wall defect
-  # - HP:0011470  # Nasogastric tube feeding in infancy
-  # - HP:0011471  # Gastrostomy tube feeding in infancy
-  # - HP:0012758  # Neurodevelopmental delay
+  - HP:0010881  # Abnormality of the umbilical cord
+  - HP:0011328  # Abnormality of fontanelles
+  - HP:0011481  # Abnormal lacrimal duct morphology
+  - HP:0011675  # Arrhythmia
+  - HP:0011968  # Feeding difficulties
+  - HP:0012372  # Abnormal eye morphology
+  - HP:0012537  # Food intolerance
+  - HP:0012768  # Neonatal asphyxia
+  - HP:0030972  # Abnormal systemic blood pressure
+  - HP:0031703  # Abnormal ear morphology
+  - HP:0100277  # Periauricular skin pits
+  - HP:0100767  # Abnormality of the placenta
+  - HP:0100962  # Shyness
+  - HP:0410263  # Brain imaging abnormality
+  - ICD10:F30-39  # F30-F39: Mood [affective] disorders
+  - ICD10:P90  # P90: Convulsions of newborn (newborn seizures)
+  - ICD10:Y40-59  # Y40-Y59: Drugs, medicaments and biological substances causing adverse effects in therapeutic use
 
 custom:
-  HP:0011470:+1:
-    name: Tube feeding in infancy
+  HP:0010460/0010461:
+    name: Abnormality of male or female genitalia
     rule: "any"
     members:
-      - HP:0011470  # Nasogastric tube feeding in infancy
-      - HP:0011471  # Gastrostomy tube feeding in infancy
+      - HP:0010460
+      - HP:0010461
 
-  HP:-0012758:
-    name: Normal neurodevelopment
-    rule: "none"
+  COMBO:behavioural_diagnosis:
+    name: behavioural_diagnosis
+    rule: "any"
     members:
-      - HP:0012758  # Neurodevelopmental delay
+      - C6:autistic_disorder
+      - HP:0000722
+      - HP:0000729
+      - HP:0000736
+      - HP:0007018
+      - HP:0100033
