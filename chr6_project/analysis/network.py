@@ -99,7 +99,7 @@ def build_network_edges(comparison_table):
         id1, id2 = intersect.ids
         edge_id = f"{id1}_{id2}"
 
-        change = intersect.change
+        change = intersect.copy_number
 
         length_sim = intersect.length_similarity
 
