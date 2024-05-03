@@ -10,7 +10,11 @@ This project is part of The Chromosome 6 Project, a research initiative that aim
 ## Installation
 `Del2Phen` is written in Python 3 and requires Python 3.9. We recommend using `conda` to create a Python 3.9 environment, then installing with `pip`:
 
-```python -m pip install del2phen```
+
+```
+conda create -n del2phen_env python=3.9
+python -m pip install del2phen
+```
 
 
 ## Getting Started
@@ -34,4 +38,4 @@ There are several ways to produce phenotype predictions with Del2Phen. The simpl
 
 ```del2phen -g cnvs.tsv -p phenotypes.tsv -cnv chr6:123456-234567:1 -op ./```
 
-The above command will produce a table of phenotypes predicted to be found in patients with a deletion (copy number of 1) on chromosome 6 from bases 123456 to 234567. 
+The above command will produce a tabe of phenotypes predicted to be found in patients with a deletion (copy number of 1) on chromosome 6 from bases 123456 to 234567. 
