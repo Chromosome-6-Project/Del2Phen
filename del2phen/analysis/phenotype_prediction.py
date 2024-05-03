@@ -7,7 +7,7 @@ import numpy as np
 import pandas as pd
 from pronto import Term
 
-from chr6_project.analysis.plotting import plot_precision_stats
+from del2phen.analysis.plotting import plot_precision_stats
 
 
 class TraitPrediction:

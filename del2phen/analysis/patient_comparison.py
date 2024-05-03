@@ -11,19 +11,19 @@ from typing import List, Optional, Union
 import numpy as np
 import pandas as pd
 
-from chr6_project.analysis.data_objects import Patient, PatientDatabase, CNV
-from chr6_project.analysis.gene_set import GeneSet
-from chr6_project.analysis.phenotype_homogeneity import (
+from del2phen.analysis.data_objects import Patient, PatientDatabase, CNV
+from del2phen.analysis.gene_set import GeneSet
+from del2phen.analysis.phenotype_homogeneity import (
     PhenotypePrevalence,
     PatientGroupPrevalences,
     HomogeneityDatabase
     )
-from chr6_project.analysis.phenotype_prediction import (
+from del2phen.analysis.phenotype_prediction import (
     TraitPrediction,
     PatientPredictions,
     PredictionDatabase
     )
-from chr6_project.analysis.utilities import (
+from del2phen.analysis.utilities import (
     jaccard,
     length_of_range_intersects,
     merge_range_list

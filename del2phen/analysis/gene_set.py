@@ -13,8 +13,8 @@ import mygene
 import pandas as pd
 from venn import venn
 
-from chr6_project.analysis.utilities import overlap, REFERENCE_CHR
-from chr6_project import resources
+from del2phen.analysis.utilities import overlap, REFERENCE_CHR
+from del2phen import resources
 
 
 # %% Annotation Types

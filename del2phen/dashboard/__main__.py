@@ -7,11 +7,11 @@ import dash_bootstrap_components as dbc
 from numpy import linspace
 import plotly.express as px
 
-from chr6_project.analysis import network, plotting
-from chr6_project.analysis.analyze import analyze_online
-from chr6_project.analysis.phenotype_prediction import PredictionDatabase
+from del2phen.analysis import network, plotting
+from del2phen.analysis.analyze import analyze_online
+from del2phen.analysis.phenotype_prediction import PredictionDatabase
 
-from chr6_project.dashboard.dashboard_general import head_layout
+from del2phen.dashboard.dashboard_general import head_layout
 
 
 comparison, geneset, ontology, termset = analyze_online(

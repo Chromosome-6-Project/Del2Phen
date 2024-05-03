@@ -1,10 +1,10 @@
 import argparse
 import sys
 
-from chr6_project.analysis.analyze import analyze
-from chr6_project.analysis.patient_comparison import (predict_phenotypes_for_cnv_strings,
-                                                      _convert_cnv_str_to_cnv)
-from chr6_project.analysis.data_objects import Patient
+from del2phen.analysis.analyze import analyze
+from del2phen.analysis.patient_comparison import (predict_phenotypes_for_cnv_strings,
+                                                  _convert_cnv_str_to_cnv)
+from del2phen.analysis.data_objects import Patient
 
 
 class CustomHelp(argparse.HelpFormatter):

@@ -10,8 +10,8 @@ from typing import Dict, List, Optional, Set, Union
 import pandas as pd
 from numpy import mean, median
 
-from chr6_project.analysis.gene_set import Gene, GeneSet, is_haploinsufficient
-from chr6_project.analysis.utilities import (
+from del2phen.analysis.gene_set import Gene, GeneSet, is_haploinsufficient
+from del2phen.analysis.utilities import (
     merge_range_list,
     overlap,
     )

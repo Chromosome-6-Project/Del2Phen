@@ -1,6 +1,5 @@
 
 from collections import namedtuple
-import csv
 import importlib.resources as pkg_resources
 
 import numpy as np
@@ -8,7 +7,7 @@ import pandas as pd
 from pronto import Definition, Ontology, TermSet
 import yaml
 
-from chr6_project import resources
+from del2phen import resources
 
 
 def read_hpo_ontology():

@@ -16,9 +16,9 @@ import plotly.express as px
 from plotly.subplots import make_subplots
 import plotly.io as pio
 
-from chr6_project.analysis import network
-from chr6_project.analysis.data_objects import PatientDatabase, GenomeDict
-from chr6_project.analysis.utilities import overlap
+from del2phen.analysis import network
+from del2phen.analysis.data_objects import PatientDatabase, GenomeDict
+from del2phen.analysis.utilities import overlap
 
 
 pio.renderers.default = "browser"

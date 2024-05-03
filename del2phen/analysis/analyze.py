@@ -7,10 +7,10 @@ from typing import List, Optional, Union
 
 import pandas as pd
 
-from chr6_project.analysis.patient_comparison import ComparisonTable
-from chr6_project.analysis.data_objects import PatientDatabase, Patient, CNV
-from chr6_project.analysis.gene_set import GeneSet, make_geneset, read_geneset_gtf
-import chr6_project.analysis.hpo as c6_hpo
+from del2phen.analysis.patient_comparison import ComparisonTable
+from del2phen.analysis.data_objects import PatientDatabase, Patient, CNV
+from del2phen.analysis.gene_set import GeneSet, make_geneset, read_geneset_gtf
+import del2phen.analysis.hpo as c6_hpo
 
 
 def make_patients(genotypes: pd.DataFrame, phenotypes: dict, geneset: GeneSet = None):
