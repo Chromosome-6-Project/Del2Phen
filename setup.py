@@ -6,7 +6,7 @@ with open("README.md", "r") as fh:
 
 setup(
     name="Del2Phen",
-    version="1.0.0",
+    version="0.0.2",
     author="T.D. Medina",
     author_email="tylerdanmedina@gmail.com",
     description="Del2Phen, a tool to predict phenotypes associated with copy-number "
