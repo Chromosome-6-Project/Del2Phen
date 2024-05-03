@@ -110,7 +110,10 @@ def analyze(genotypes, phenotypes, drop_list_file=None, custom_phenotype_file=No
 
     print("Reading patient phenotypes...")
     phenotypes = pd.read_csv(phenotypes, sep="\t",
-                             true_values=["T"], false_values=["F"], na_values=["Unsure"])
+                             true_values=["T", "t", 1],
+                             false_values=["F", "f", 0],
+                             na_values=[
+            "Unsure"])
 
     print("Parsing phenotypes...")
     phenotypes, ontology, termset = c6_hpo.parse_phenotypes(phenotypes,
