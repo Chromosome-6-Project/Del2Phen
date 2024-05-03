@@ -5,6 +5,7 @@
 @author: T.D. Medina
 """
 
+from collections import Counter
 from typing import List, Optional, Union
 
 import numpy as np
@@ -35,18 +36,14 @@ class ComparisonTable:
 
     def __init__(self, patient_db=None,
                  chromosomes: Optional[Union[str, List[str]]] = None,
-                 cnv_changes: Optional[Union[str, List[str]]] = None,
+                 copy_numbers: Optional[Union[int, List[int]]] = None,
                  pLI_threshold=0.9, HI_threshold=10, phaplo_threshold=0.86,
                  comparison_table=None, mode="confirm"):
         if comparison_table is not None:
             self.read_from_existing(comparison_table)
             return
         self.patient_db = patient_db
-        # self.raw = self.compare_patients(pLI_threshold, HI_threshold,
-        #                                  phaplo_threshold, mode)
-        # self.index = self.make_index()
-        # self.array = self.make_array()
-        self.index, self.array = self.compare_patients(chromosomes, cnv_changes,
+        self.index, self.array = self.compare_patients(chromosomes, copy_numbers,
                                                        pLI_threshold, HI_threshold,
                                                        phaplo_threshold, mode)
         self.size = len(self.index)
@@ -74,10 +71,6 @@ class ComparisonTable:
             self.__iterj__ = self.__iteri__
         return result
 
-    # def make_index(self):
-    #     """Create name-to-number mapping to look up names in numpy array."""
-    #     return {j: i for i, j in enumerate(self.raw)}
-
     def lookup(self, pid1, pid2=None):
         """Look up patient or patient-patient intersect in comparison array."""
         if not pid2:
@@ -90,8 +83,6 @@ class ComparisonTable:
 
     def read_from_existing(self, comparison_table):
         self.patient_db = comparison_table.patient_db
-        # self.raw = comparison_table.raw
-        # self.index = comparison_table.index
         self.array = comparison_table.array
         self.size = comparison_table.size
 
@@ -115,7 +106,7 @@ class ComparisonTable:
 
     def compare_patients(self,
                          chromosomes: Optional[Union[str, List[str]]] = None,
-                         cnv_changes: Optional[Union[str, List[str]]] = None,
+                         copy_numbers: Optional[Union[int, List[int]]] = None,
                          pLI_threshold=0.9, HI_threshold=10, phaplo_threshold=0.86,
                          mode="confirm"):
         """Compare all patients to each other."""
@@ -127,7 +118,7 @@ class ComparisonTable:
             patient_comparison = dict()
             patient_comparison[id_i] = self.compare_pair(patient_i, patient_i,
                                                          chromosomes=chromosomes,
-                                                         cnv_changes=cnv_changes,
+                                                         copy_numbers=copy_numbers,
                                                          HI_threshold=HI_threshold,
                                                          phaplo_threshold=phaplo_threshold,
                                                          pLI_threshold=pLI_threshold,
@@ -137,7 +128,7 @@ class ComparisonTable:
                 patient_j = self.patient_db[id_j]
                 patient_comparison[id_j] = self.compare_pair(patient_i, patient_j,
                                                              chromosomes=chromosomes,
-                                                             cnv_changes=cnv_changes,
+                                                             copy_numbers=copy_numbers,
                                                              HI_threshold=HI_threshold,
                                                              phaplo_threshold=phaplo_threshold,
                                                              pLI_threshold=pLI_threshold,
@@ -148,9 +139,9 @@ class ComparisonTable:
 
     def compare_patient_vs_others(self, patient: Patient, save_results=False,
                                   chromosomes: Optional[Union[str, List[str]]] = None,
-                                  cnv_changes: Optional[Union[str, List[str]]] = None,
+                                  copy_numbers: Optional[Union[int, List[int]]] = None,
                                   pLI_threshold=0.9, HI_threshold=10, phaplo_threshold=0.86,
-                                  mode="confirm"):
+                                  mode="confirm", **kwargs):
         """Compare one Patient object against all patients in the PatientDatabase."""
         ids = self.index.keys()
         comparisons = []
@@ -158,7 +149,7 @@ class ComparisonTable:
             patient_2 = self.patient_db[pid]
             intersect = self.compare_pair(patient, patient_2,
                                           chromosomes=chromosomes,
-                                          cnv_changes=cnv_changes,
+                                          copy_numbers=copy_numbers,
                                           HI_threshold=HI_threshold,
                                           phaplo_threshold=phaplo_threshold,
                                           pLI_threshold=pLI_threshold,
@@ -166,7 +157,7 @@ class ComparisonTable:
             comparisons.append(intersect)
         if save_results:
             self_compare = self.compare_pair(patient, patient,
-                                             chromosomes=chromosomes, cnv_changes=cnv_changes,
+                                             chromosomes=chromosomes, copy_numbers=copy_numbers,
                                              HI_threshold=HI_threshold,
                                              phaplo_threshold=phaplo_threshold,
                                              pLI_threshold=pLI_threshold,
@@ -182,49 +173,39 @@ class ComparisonTable:
                                    axis=0)
         return comparisons
 
-    # def recompare_patients(self, pLI_threshold=0.9, HI_threshold=10,
-    #                        phaplo_threshold=0.86, mode="confirm"):
-    #     self.index, self.array = self.compare_patients(pLI_threshold, HI_threshold,
-    #                                                    phaplo_threshold, mode)
-    #     # self.raw = self.compare_patients(pLI_threshold, HI_threshold, phaplo_threshold, mode)
-    #     # self.array = self.make_array()
-
     @classmethod
     def compare_pair(cls, patient_1: Patient, patient_2: Patient,
                      chromosomes: Optional[Union[str, List[str]]] = None,
-                     cnv_changes: Optional[Union[str, List[str]]] = None,
+                     copy_numbers: Optional[Union[int, List[int]]] = None,
                      HI_threshold=10,
                      phaplo_threshold=0.86,
                      pLI_threshold=0.9,
                      mode="confirm"):
-        """Compare all metrics between two patients.
-        :param chromosomes:
-        :param cnv_changes:
-        """
-        cnv_type = {cnv.change for cnv in patient_1.cnvs + patient_2.cnvs}
-        if len(cnv_type) == 0:
-            cnv_type = "N/A"
-        elif len(cnv_type) > 1:
-            cnv_type = "Mixed"
+        """Compare all metrics between two patients. """
+        copy_number = {cnv.copy_number for cnv in patient_1.cnvs + patient_2.cnvs}
+        if len(copy_number) == 0:
+            copy_number = "N/A"
+        elif len(copy_number) > 1:
+            copy_number = "Mixed"
         else:
-            cnv_type = list(cnv_type)[0]
-        length_compare = cls.compare_pair_length(patient_1, patient_2, chromosomes, cnv_changes)
-        loci_compare = cls.compare_pair_loci(patient_1, patient_2, chromosomes, cnv_changes)
-        gene_compare = cls.compare_pair_genes(patient_1, patient_2, chromosomes, cnv_changes)
+            copy_number = list(copy_number)[0]
+        length_compare = cls.compare_pair_length(patient_1, patient_2, chromosomes, copy_numbers)
+        loci_compare = cls.compare_pair_loci(patient_1, patient_2, chromosomes, copy_numbers)
+        gene_compare = cls.compare_pair_genes(patient_1, patient_2, chromosomes, copy_numbers)
         hi_compare = cls.compare_pair_HI_genes(patient_1, patient_2,
                                                chromosomes=chromosomes,
-                                               cnv_changes=cnv_changes,
+                                               copy_numbers=copy_numbers,
                                                pLI_threshold=pLI_threshold,
                                                HI_threshold=HI_threshold,
                                                phaplo_threshold=phaplo_threshold,
                                                mode=mode)
         dom_compare = cls.compare_pair_dominant_genes(patient_1, patient_2,
-                                                      chromosomes, cnv_changes)
+                                                      chromosomes, copy_numbers)
         dom_match = cls.compare_pair_dominant_match(patient_1, patient_2,
-                                                    chromosomes, cnv_changes)
+                                                    chromosomes, copy_numbers)
         hpo_compare = cls.compare_pair_hpos(patient_1, patient_2)
         comparison = PatientIntersect(
-            patient_1, patient_2, cnv_type,
+            patient_1, patient_2, copy_number,
             length_compare, loci_compare,
             gene_compare, hi_compare,
             dom_compare, dom_match,
@@ -235,10 +216,10 @@ class ComparisonTable:
     @staticmethod
     def compare_pair_length(patient_1: Patient, patient_2: Patient,
                             chromosomes: Optional[Union[str, List[str]]] = None,
-                            cnv_changes: Optional[Union[str, List[str]]] = None):
+                            copy_numbers: Optional[Union[int, List[int]]] = None):
         """Compare CNV length between two patients."""
-        size_1 = sum([cnv.length for cnv in patient_1.filter_cnvs(chromosomes, cnv_changes)])
-        size_2 = sum([cnv.length for cnv in patient_2.filter_cnvs(chromosomes, cnv_changes)])
+        size_1 = sum([cnv.length for cnv in patient_1.filter_cnvs(chromosomes, copy_numbers)])
+        size_2 = sum([cnv.length for cnv in patient_2.filter_cnvs(chromosomes, copy_numbers)])
         if size_1 == 0 or size_2 == 0:
             return 0
         return jaccard(size_1, size_2)
@@ -246,10 +227,10 @@ class ComparisonTable:
     @staticmethod
     def compare_pair_loci(patient_1, patient_2,
                           chromosomes: Optional[Union[str, List[str]]] = None,
-                          cnv_changes: Optional[Union[str, List[str]]] = None):
+                          copy_numbers: Optional[Union[int, List[int]]] = None):
         """Compare CNV loci between two patients."""
-        ranges_1 = patient_1.get_affected_ranges(chromosomes, cnv_changes)
-        ranges_2 = patient_2.get_affected_ranges(chromosomes, cnv_changes)
+        ranges_1 = patient_1.get_affected_ranges(chromosomes, copy_numbers)
+        ranges_2 = patient_2.get_affected_ranges(chromosomes, copy_numbers)
 
         total_union = 0
         total_intersect = 0
@@ -271,9 +252,9 @@ class ComparisonTable:
     @staticmethod
     def compare_pair_genes(patient_1: Patient, patient_2: Patient,
                            chromosomes: Optional[Union[str, List[str]]] = None,
-                           cnv_changes: Optional[Union[str, List[str]]] = None):
+                           copy_numbers: Optional[Union[int, List[int]]] = None):
         """Compare affected genes between two patients."""
-        gene_info = [patient.get_all_genes(chromosomes, cnv_changes)
+        gene_info = [patient.get_all_genes(chromosomes, copy_numbers)
                      for patient in [patient_1, patient_2]]
         jaccard_index, intersect = jaccard(*gene_info)
         return jaccard_index, intersect
@@ -281,13 +262,13 @@ class ComparisonTable:
     @staticmethod
     def compare_pair_HI_genes(patient_1: Patient, patient_2: Patient,
                               chromosomes: Optional[Union[str, List[str]]] = None,
-                              cnv_changes: Optional[Union[str, List[str]]] = None,
+                              copy_numbers: Optional[Union[int, List[int]]] = None,
                               pLI_threshold=0.9,
                               HI_threshold=10,
                               phaplo_threshold=0.86,
                               mode="confirm"):
         """Compare affected HI genes between two patients. """
-        gene_info = [patient.get_all_HI_genes(chromosomes, cnv_changes, pLI_threshold,
+        gene_info = [patient.get_all_HI_genes(chromosomes, copy_numbers, pLI_threshold,
                                               HI_threshold, phaplo_threshold, mode)
                      for patient in [patient_1, patient_2]]
         jaccard_index, intersect = jaccard(*gene_info)
@@ -296,9 +277,9 @@ class ComparisonTable:
     @staticmethod
     def compare_pair_dominant_genes(patient_1: Patient, patient_2: Patient,
                                     chromosomes: Optional[Union[str, List[str]]] = None,
-                                    cnv_changes: Optional[Union[str, List[str]]] = None):
+                                    copy_numbers: Optional[Union[int, List[int]]] = None):
         """Compare affected dominant-effect genes between two patients."""
-        gene_info = [patient.get_all_dominant_genes(chromosomes, cnv_changes)
+        gene_info = [patient.get_all_dominant_genes(chromosomes, copy_numbers)
                      for patient in [patient_1, patient_2]]
         jaccard_index, intersect = jaccard(*gene_info)
         return jaccard_index, intersect
@@ -306,25 +287,19 @@ class ComparisonTable:
     @staticmethod
     def compare_pair_dominant_match(patient_1: Patient, patient_2: Patient,
                                     chromosomes: Optional[Union[str, List[str]]] = None,
-                                    cnv_changes: Optional[Union[str, List[str]]] = None) -> bool:
-        match = (patient_1.get_all_dominant_genes(chromosomes, cnv_changes)
-                 == patient_2.get_all_dominant_genes(chromosomes, cnv_changes))
+                                    copy_numbers: Optional[Union[int, List[int]]] = None) -> bool:
+        """Check if two patients share the same affected dominant-effect genes."""
+        match = (patient_1.get_all_dominant_genes(chromosomes, copy_numbers)
+                 == patient_2.get_all_dominant_genes(chromosomes, copy_numbers))
         return match
 
     @staticmethod
     def compare_pair_hpos(patient_1: Patient, patient_2: Patient):
         """Compare HPO terms between two patients."""
-        hpo_set1 = {hpo for hpo, response in patient_1.hpo.items() if response == "T"}
-        hpo_set2 = {hpo for hpo, response in patient_2.hpo.items() if response == "T"}
+        hpo_set1 = {hpo for hpo, response in patient_1.phenotypes.items() if response is True}
+        hpo_set2 = {hpo for hpo, response in patient_2.phenotypes.items() if response is True}
         jaccard_index, intersect = jaccard(hpo_set1, hpo_set2)
         return jaccard_index, intersect
-
-    # def export_tables_per_comparator(self):
-    #     tables = dict()
-    #     comparators = ["length_similarity", "loci_similarity", "gene_similarity",
-    #                    "hi_gene_similarity", "dom_gene_match"]
-    #     for comparator in comparators:
-    #         table = {pid1: {pid2: intersect[]}}
 
     # %% Phenotypes prevalence and prediction methods ==========
 
@@ -333,6 +308,15 @@ class ComparisonTable:
                                   gene_similarity=0, hi_gene_similarity=0,
                                   dom_gene_match=True, hpo_similarity=0,
                                   include_self=False, as_patient_database=False):
+        """Retrieve patients that satisfy comparison criteria with a selected patient.
+
+        All patients whose comparison values with the specified patient are at least
+        as high as the specified criteria (or evaluate to True, for dom_gene_match)
+        are returned. Length, loci, gene, hi_gene, and hpo similarity are Jaccard
+        index values from 0 to 1. Patients can be returned as a dictionary of
+        'patient.id': patient, or as a PatientDatabase object. Specifying
+        'include_self=True' will include the original patient in the results.
+        """
         intersects = [inter for inter in self.lookup(patient_id, "all") if all(
             [
                 inter.length_similarity >= length_similarity,
@@ -341,7 +325,6 @@ class ComparisonTable:
                 inter.hi_gene_similarity >= hi_gene_similarity,
                 inter.dom_gene_match or not dom_gene_match,
                 inter.hpo_similarity >= hpo_similarity,
-                #not inter.self_compare or include_self
                 not inter.self_compare
                 ]
             )]
@@ -354,70 +337,11 @@ class ComparisonTable:
             return patients
         return intersects
 
-    # def filter_patient_comparisons(self, patient_id,
-    #                                length_similarity=0, loci_similarity=0,
-    #                                gene_similarity=0, hi_similarity=0,
-    #                                hpo_similarity=0, split_by_dom=False):
-    #     intersections = self.lookup(patient_id, "all")
-    #     filtered = []
-    #     for intersect in intersections:
-    #         if intersect.self_compare:
-    #             continue
-    #         # if intersect.patients[0] == intersect.patients[1]:
-    #         #     continue
-    #         patient2 = intersect.get_other_patient(patient_id)
-    #         # if patient1 != intersect.patients[0]:
-    #         #     patient2 = intersect.patients[0]
-    #         # else:
-    #         #     patient2 = intersect.patients[1]
-    #
-    #         if not patient2.hpo:
-    #             continue
-    #
-    #         if not all([intersect.length_similarity >= length_similarity,
-    #                     intersect.loci_similarity >= loci_similarity,
-    #                     intersect.gene_similarity >= gene_similarity,
-    #                     intersect.hi_gene_similarity >= hi_similarity,
-    #                     (not split_by_dom) or intersect.dom_gene_similarity in {0, 1},
-    #                     intersect.hpo_similarity >= hpo_similarity]):
-    #             continue
-    #
-    #         filtered.append(patient2)
-    #     return filtered
-
-    # def filter_patient_intersections(self, patient_id, length_similarity=0,
-    #                                  loci_similarity=0, gene_similarity=0,
-    #                                  hi_similarity=0, hpo_similarity=0,
-    #                                  include_self=False):
-    #     intersections = {intersect.get_other_id(patient_id): intersect
-    #                      for intersect in self.lookup(patient_id, "all")
-    #                      if all([intersect.length_similarity >= length_similarity,
-    #                              intersect.loci_similarity >= loci_similarity,
-    #                              intersect.gene_similarity >= gene_similarity,
-    #                              intersect.hi_gene_similarity >= hi_similarity,
-    #                              intersect.hpo_similarity >= hpo_similarity])}
-    #     if include_self is False and patient_id in intersections:
-    #         del intersections[patient_id]
-    #     return intersections
-
-    # def make_patient_intersection_group(self, patient_id, length_similarity=0,
-    #                                     loci_similarity=0, gene_similarity=0,
-    #                                     hi_similarity=0, hpo_similarity=0,
-    #                                     include_self=True, as_patient_database=True):
-    #     intersections = self.filter_patient_intersections(
-    #         patient_id, length_similarity, loci_similarity, gene_similarity,
-    #         hi_similarity, hpo_similarity, include_self
-    #         )
-    #     patients = [intersection.get_other_patient(patient_id)
-    #                 for intersection in intersections.values()]
-    #     if as_patient_database:
-    #         patients = PatientDatabase({patient.id: patient for patient in patients})
-    #     return patients
-
     def calculate_patient_pheno_prevalence(self, patient_id, phenotypes,
                                            length_similarity=0, loci_similarity=0,
                                            gene_similarity=0, hi_gene_similarity=0,
                                            dom_gene_match=True, hpo_similarity=0):
+        """Calculate phenotype prevalence in a patient subgroup."""
         group = self.filter_patient_intersects(
             patient_id, length_similarity, loci_similarity,
             gene_similarity, hi_gene_similarity, dom_gene_match, hpo_similarity,
@@ -425,8 +349,8 @@ class ComparisonTable:
             )
         size = group.size
         prevs = {
-            phenotype: sum([patient.hpo[phenotype] == "T" for patient in group
-                            if phenotype in patient.hpo])
+            phenotype: sum([patient.phenotypes[phenotype] == "T" for patient in group
+                            if phenotype in patient.phenotypes])
             for phenotype in phenotypes
             }
         prevs = {phenotype: PhenotypePrevalence(patient_id, group, phenotype, size, prevalence)
@@ -438,6 +362,7 @@ class ComparisonTable:
                                                 loci_similarity=0, gene_similarity=0,
                                                 hi_gene_similarity=0, dom_gene_match=True,
                                                 hpo_similarity=0):
+        """Calculate phenotype prevalences for all patient subgroups."""
         params = [phenotypes, length_similarity, loci_similarity, gene_similarity,
                   hi_gene_similarity, dom_gene_match, hpo_similarity]
         all_prevs = {patient: self.calculate_patient_pheno_prevalence(patient, *params)
@@ -445,88 +370,58 @@ class ComparisonTable:
         all_prevs = HomogeneityDatabase(all_prevs)
         return all_prevs
 
-# =============================================================================
-#     @staticmethod
-#     def predict_phenotypes(comparison_group, show=10):
-#         size = len(comparison_group)
-#         if size == 0:
-#             return dict()
-#
-#         all_hpo = {hpo: 0 for patient in comparison_group for hpo in patient.hpo}
-#         for hpo in all_hpo:
-#             for patient in comparison_group:
-#                 if hpo in patient.hpo:
-#                     all_hpo[hpo] += 1
-#         all_hpo = {hpo: (count, count/size) for hpo, count in all_hpo.items()}
-#
-#         if show == 0:
-#             return all_hpo
-#         if show == "all":
-#             show = len(all_hpo)
-#         string = "Top {show} phenotypes out of {len(all_hpo)}:\n"
-#         for hpo, (count, freq) in sorted(all_hpo.items(), key=lambda x: x[1][0], reverse=True)[:show]:
-#             string += f"{hpo.name}:    {count}/{size}    {freq:.2%}\n"
-#         print(string)
-#
-#         return all_hpo
-# =============================================================================
-
     @staticmethod
     def predict_group_phenotypes(comparison_group, show=10,
-                                 additional_hpos=None, additional_groupname="Added"):
+                                 additional_hpos: set = None,
+                                 additional_groupname="Added"):
+        """Predict phenotypes for a patient subgroup."""
         population = len(comparison_group)
         if population == 0:
             return dict()
 
-        all_hpo = {hpo: {"t": 0, "f": 0, "unsure": 0, "na": 0, "group": "predicted"}
-                   for patient in comparison_group for hpo in patient.hpo.keys()}
-        if additional_hpos is not None:
-            all_hpo.update({hpo: {"t": 0, "f": 0, "unsure": 0, "na": 0, "group": additional_groupname}
-                            for hpo in additional_hpos})
+        if additional_hpos is None:
+            additional_hpos = set()
+        group_terms = {term for patient in comparison_group
+                       for term in patient.phenotypes.keys()}
+        group_terms -= additional_hpos
 
-        for hpo, counts in all_hpo.items():
-            for patient in comparison_group:
-                # TODO: This is to make expanded HPOs work. But how should
-                # they be counted? This counts them as NAs.
-                # if hpo not in patient.hpo:
-                #     counts["na"] += 1
-                response = patient.hpo[hpo].lower()
-                counts[response] += 1
+        predictions = dict()
+        for group, term_set in zip(["predicted", additional_groupname],
+                                   [group_terms, additional_hpos]):
+            for term in term_set:
+                count = Counter([patient.phenotypes[term]
+                                 for patient in comparison_group
+                                 if term in patient.phenotypes])
+                if count[True] == 0 and group == "predicted":
+                    continue
+                na_count = sum(count.values()) - (count[True] + count[False])
+                prediction = TraitPrediction(term, population,
+                                             true=count[True], false=count[False],
+                                             na=na_count,
+                                             group=group)
+                predictions[term] = prediction
 
-        all_hpo = {hpo: TraitPrediction(hpo, population, *counts.values())
-                   for hpo, counts in all_hpo.items()
-                   if counts["group"] == additional_groupname or counts["t"] > 0}
-
-        if show == 0:
-            return all_hpo
-
-        if show == "all":
-            show = len(all_hpo)
-
-        print(f"\nTop {show} phenotypes out of {len(all_hpo)}:\n\n"
-              "Trait\tPop\tPop.Adjust\tFreq\tFreq.Adjust")
-        for trait_freq in sorted(all_hpo.values(), key=lambda x: x.true_count, reverse=True)[:show]:
-            print(trait_freq)
-
-        return all_hpo
+        return predictions
 
     def test_patient_pheno_predictions(self, patient_id,
                                        length_similarity=0, loci_similarity=0,
                                        gene_similarity=0, hi_gene_similarity=0,
                                        dom_gene_match=True, hpo_similarity=0,
                                        skip_no_hpos=True):
+        """Predict phenotypes for a patient and compare with their known phenotypes."""
         params = [patient_id, length_similarity, loci_similarity, gene_similarity,
                   hi_gene_similarity, dom_gene_match, hpo_similarity]
 
-        index_hpos = {hpo for hpo, response in self.patient_db[patient_id].hpo.items()
-                      if response == "T"}
+        index_hpos = {hpo for hpo, response in self.patient_db[patient_id].phenotypes.items()
+                      if response is True}
 
         comparison_group = self.filter_patient_intersects(*params, include_self=False,
                                                           as_patient_database=True)
         comparison_group = list(comparison_group.patients.values())
 
         if skip_no_hpos:
-            comparison_group = [patient for patient in comparison_group if patient.hpo]
+            comparison_group = [patient for patient in comparison_group
+                                if patient.phenotypes]
 
         predictions = self.predict_group_phenotypes(comparison_group, show=0,
                                                     additional_hpos=index_hpos,
@@ -541,7 +436,9 @@ class ComparisonTable:
     def test_all_patient_pheno_predictions(self, length_similarity=0, loci_similarity=0,
                                            gene_similarity=0, hi_gene_similarity=0,
                                            dom_gene_match=True, hpo_similarity=0,
-                                           skip_no_hpos=True, filter_unknowns=True):
+                                           skip_no_hpos=True, filter_unknowns=True,
+                                           **kwargs):
+        """Compare phenotypes for each patient and compare with their known phenotypes."""
         params = [length_similarity, loci_similarity, gene_similarity, hi_gene_similarity,
                   dom_gene_match, hpo_similarity, skip_no_hpos]
 
@@ -555,28 +452,6 @@ class ComparisonTable:
 
         all_predictions = PredictionDatabase(all_predictions)
         return all_predictions
-
-    # %% === Export methods ==========
-
-    # TODO: Needs to be updated, won't work currently.
-    def write_all_comparisons(self, outfile):
-        """Write comparison results to TSV file."""
-        properties = ["length_similarity",
-                      "loci_similarity", "loci_shared_size",
-                      "gene_similarity", "gene_count",
-                      "hpo_similarity", "hpo_count"]
-        write_me = ["\t".join(["patient1", "patient2"] + properties) + "\n"]
-        for intersect in self:
-            p1, p2 = intersect.patients
-            if p1 == p2:
-                continue
-            this_intersect = "\t".join(
-                [f"{intersect.patients[0].id}", f"{intersect.patients[1].id}"]
-                + [f"{intersect.__getattribute__(prop)}" for prop in properties]
-                ) + "\n"
-            write_me.append(this_intersect)
-        with open(outfile, "w") as out:
-            out.writelines(write_me)
 
     def tabulate_summary(self):
         table = []
@@ -593,177 +468,20 @@ class ComparisonTable:
         table = pd.DataFrame(table)
         return table
 
-    def convert_to_3d_array(self):
-        array = np.ndarray([6, *self.array.shape])
-        for intersect in self:
-            if not intersect.self_compare:
-                pid1, pid2 = intersect.ids
-            else:
-                pid1 = list(intersect.ids)[0]
-                pid2 = pid1
-            pid1, pid2 = self.index[pid1], self.index[pid2]
-            for i, sim in enumerate(intersect.get_similarities()):
-                array[i, pid1, pid2] = sim
-                array[i, pid2, pid1] = sim
-        return array
-
-    def make_summary_table(self, patient_predictions):
-        table = []
-        for patient, predictions in patient_predictions.items():
-            predictions = list(predictions.values())
-
-            population = predictions[0].population
-            median_adjusted_population = np.median(
-                [pred.population_adjusted for pred in predictions]
-                )
-
-            known = [pred for pred in predictions if pred.group == "index"]
-            known_count = len(known)
-            if known_count == 0:
-                known_found = 0
-            else:
-                known_found = sum(1 for pred in known if pred._found) / known_count
-            # known_above_thresh = (sum(1 for pred in known
-            #                           if pred.found and pred.freq_adjusted >= threshold)
-            #                       / known_found)
-
-            new_count = sum(1 for pred in predictions if pred._found and pred.group == "predicted")
-
-            table.append([patient, population, known_count, known_found, None,
-                          new_count, None])
-        table = pd.DataFrame(
-            sorted(table, key=lambda x: x[0]),
-            columns=["ID", "Group_Size", "Known_HPO_Terms",
-                     "Known_Found", "Known_Above_Threshold",
-                     "New_Found", "New_Above_Threshold"]
-            )
-        return table
-
-    @staticmethod
-    def write_excel_sheet(table, name, writer=None, path=None, threshold=0,
-                          formats=None, widths=None, conditionals=None):
-        close = False
-        if writer is None:
-            writer = pd.ExcelWriter(path, engine="xlsxwriter")
-            close = True
-
-        table.to_excel(writer, sheet_name=name, startrow=3, index=False)
-        col_names = [{"header": col_name} for col_name in table.columns]
-        if name == "Summary":
-            formula = ('=COUNTIFS('
-                       'INDIRECT("Table_" & [@ID] & "[Freq_Adjusted]"), ">=" & $B$2,'
-                       'INDIRECT("Table_" & [@ID] & "[Group]"), "=index")'
-                       '/[@[Known_HPO_Terms]]')
-            formula2 = ('=COUNTIFS('
-                       'INDIRECT("Table_" & [@ID] & "[Freq_Adjusted]"), ">=" & $B$2,'
-                       'INDIRECT("Table_" & [@ID] & "[Group]"), "=predicted")')
-            col_names[4]["formula"] = formula
-            col_names[6]["formula"] = formula2
-
-        workbook = writer.book
-        perc_format = workbook.add_format({"num_format": 10})
-
-        worksheet = writer.sheets[name]
-        worksheet.write("A1", name)
-        worksheet.write("A2", "Threshold:")
-        worksheet.write("B2", threshold, perc_format)
-
-        table_name = "Table_" + name.replace("-", "_")
-
-        worksheet.add_table(3, 0, table.shape[0]+3, table.shape[1]-1,
-                            {"columns": col_names,
-                             "name": table_name,
-                             "style": "Table Style Light 1"})
-
-        empty = [None] * len(col_names)
-        if formats is None:
-            formats = empty
-        if widths is None:
-            widths = empty
-        if conditionals is None:
-            conditionals = []
-
-        for i, (f, w) in enumerate(zip(formats, widths)):
-            worksheet.set_column(i, i, w, f)
-
-        for conditional in conditionals:
-            worksheet.conditional_format(*conditional)
-
-        if close:
-            writer.close()
-
-    def write_all_predictions_to_excel(self, predictions, path, threshold=0):
-        writer = pd.ExcelWriter(path, engine="xlsxwriter")
-
-        try:
-            workbook = writer.book
-
-            perc_format = workbook.add_format({"num_format": 10})
-            green = workbook.add_format({'bg_color': '#C6EFCE',
-                                         'font_color': '#006100'})
-            red = workbook.add_format({"bg_color": "#E6B8B7",
-                                       "font_color": "#C0504D"})
-            center_url = workbook.add_format({"center_across": True,
-                                              "font_color": "#0000FF",
-                                              "underline": True})
-
-            # Add summary sheet at the beginning of the workbook.
-            table = self.make_summary_table(predictions)
-            self.write_excel_sheet(table=table, name="Summary", writer=writer, threshold=threshold,
-                                   formats=[None, None, None, perc_format, perc_format, None, None],
-                                   widths=[20, 12, 20, 20, 25, 20, 25])
-
-            # Make patient ID's clickable on summary page.
-            worksheet = writer.sheets["Summary"]
-            for i, patient in enumerate(table["ID"], start=4):
-                worksheet.write_url(i, 0, f"internal:{patient}!A1", string=patient)
-
-            # Write individual patient sheets.
-            for patient_id in sorted(predictions):
-                table = self.convert_patient_predictions_to_df(predictions[patient_id])
-
-                # Setup conditional formatting.
-                freq_col = table.columns.get_loc("Freq_Adjusted")
-                group_col = table.columns.get_loc("Group")
-                conditionals = [(4, freq_col, table.shape[0]+3, freq_col,
-                                 {'type': 'cell',
-                                  'criteria': ">=",
-                                  'value': "'Summary'!$B$2",
-                                  'format': green}),
-                                (4, group_col, table.shape[0]+3, group_col,
-                                 {'type': 'cell',
-                                  'criteria': "==",
-                                  'value': '"predicted"',
-                                  'format': red})]
-
-                self.write_excel_sheet(table=table, name=patient_id,
-                                       writer=writer, threshold="='Summary'!$B$2",
-                                       formats=[None]*8 + [perc_format, None, perc_format],
-                                       widths=[12, 50] + [12]*9,
-                                       conditionals=conditionals)
-                worksheet = writer.sheets[patient_id]
-                worksheet.write_url(0, 4, "internal:Summary!A1",
-                                    string="Home", cell_format=center_url)
-
-        except Exception as error:
-            writer.close()
-            raise error
-        writer.close()
-
 
 class PatientIntersect:
     """Record of similarity between two patients."""
 
     # pylint: disable=too-many-instance-attributes
 
-    def __init__(self, patient_1, patient_2, cnv_type,
+    def __init__(self, patient_1, patient_2, copy_number,
                  length_compare, loci_compare,
                  gene_compare, hi_gene_compare,
                  dom_gene_compare, dom_gene_match,
                  hpo_compare):
         self.patients = {patient_1.id: patient_1, patient_2.id: patient_2}
         self.ids = {patient_1.id, patient_2.id}
-        self.change = cnv_type
+        self.copy_number = copy_number
 
         self.length_similarity = length_compare
 
@@ -837,41 +555,17 @@ class PatientIntersect:
         return similarities
 
 
-# XXX: This probably doesn't work anymore.
-# def write_comparison_table(table, patients, out, self_match="size"):
-#     """Write comparison table to file. Deprecated."""
-#     header = "PatientID"
-#     writer = []
-#     for pid in table:
-#         header += f",{pid}"
-#         string = pid
-#         for p2 in table:
-#             if pid == p2:
-#                 if self_match == "size":
-#                     string += f",{len(patients[pid].all_genes())}"
-#                 else:
-#                     string += f",{self_match}"
-#             elif p2 in table[pid]:
-#                 string += f",{table[pid][p2]}"
-#             else:
-#                 string += f",{table[p2][pid]}"
-#         string += "\n"
-#         writer.append(string)
-#     writer = [header + "\n"] + writer
-#     with open(out, "w") as outfile:
-#         outfile.writelines(writer)
-
-
 def predict_phenotypes_for_patient(patient: Patient, comparison_database: ComparisonTable,
                                    chromosomes: Optional[Union[str, List[str]]] = None,
-                                   cnv_changes: Optional[Union[str, List[str]]] = None,
+                                   copy_numbers: Optional[Union[int, List[int]]] = None,
                                    length_similarity=0, loci_similarity=0,
                                    gene_similarity=0, hi_gene_similarity=0,
                                    dom_gene_match=True, hpo_similarity=0,
                                    pLI_threshold=0.9, HI_threshold=10,
                                    phaplo_threshold=0.86, mode="confirm",
                                    tabulate=False):
-    params = dict(chromosomes=chromosomes, cnv_changes=cnv_changes,
+    """Predict phenotypes for a patient objects with CNVs."""
+    params = dict(chromosomes=chromosomes, copy_numbers=copy_numbers,
                   pLI_threshold=pLI_threshold, HI_threshold=HI_threshold,
                   phaplo_threshold=phaplo_threshold, mode=mode, save_results=False)
     intersections = comparison_database.compare_patient_vs_others(patient, **params)
@@ -885,32 +579,30 @@ def predict_phenotypes_for_patient(patient: Patient, comparison_database: Compar
     group = [inter.get_other_patient(patient.id) for inter in intersections]
     group = PatientDatabase({group_patient.id: group_patient for group_patient in group})
     predictions = comparison_database.predict_group_phenotypes(group, show=0)
+    predictions = PatientPredictions(patient.id, group, predictions)
     if tabulate:
-        table = pd.DataFrame([pred.__dict__ for pred in predictions.values()])
-        table["trait_id"] = [trait.id for trait in table.trait]
-        table["trait_name"] = [trait.name for trait in table.trait]
-        table = table[["trait_id", "trait_name",
-                       "freq", "population", "freq_adjusted", "population_adjusted",
-                       "true_count", "false_count", "unsure_count", "na_count"]]
-        table = table.set_index("trait_id")
-        return table
+        predictions = predictions.convert_patient_predictions_to_df()
+        return predictions
     return predictions
 
 
-def predict_phenotypes_for_cnvs(cnvs: list[CNV], geneset: GeneSet,
+def predict_phenotypes_for_cnvs(cnvs: list[CNV],
                                 comparison_database: ComparisonTable,
                                 chromosomes: Optional[Union[str, List[str]]] = None,
-                                cnv_changes: Optional[Union[str, List[str]]] = None,
+                                copy_numbers: Optional[Union[int, List[int]]] = None,
                                 length_similarity=0, loci_similarity=0,
                                 gene_similarity=0, hi_gene_similarity=0,
                                 dom_gene_match=True, hpo_similarity=0,
                                 pLI_threshold=0.9, HI_threshold=10,
                                 phaplo_threshold=0.86, mode="confirm",
                                 tabulate=False):
+    """Predict phenotypes based on a list of CNV objects.
+
+    CNVs must already have affected genes assigned."""
     comparison_params = dict(
         comparison_database=comparison_database,
         chromosomes=chromosomes,
-        cnv_changes=cnv_changes,
+        copy_numbers=copy_numbers,
         length_similarity=length_similarity, loci_similarity=loci_similarity,
         gene_similarity=gene_similarity, hi_gene_similarity=hi_gene_similarity,
         dom_gene_match=dom_gene_match, hpo_similarity=hpo_similarity,
@@ -920,13 +612,12 @@ def predict_phenotypes_for_cnvs(cnvs: list[CNV], geneset: GeneSet,
         )
     patient = Patient("query")
     patient.cnvs = cnvs
-    patient.assign_genes_to_cnvs(geneset)
     predictions = predict_phenotypes_for_patient(patient, **comparison_params)
     return predictions
 
 
 def _convert_cnv_str_to_cnv(cnv_string: str):
-    """CNV string format is chr:start-stop:copy_number."""
+    """Convert string format CNV ('chr:start-stop:copy_number') to CNV object ."""
     cnv = cnv_string.split(":")
     cnv = cnv[:1] + [int(n) for n in cnv[1].split("-")] + [int(cnv[-1])]
     cnv = CNV(*cnv, ID="query")
@@ -937,20 +628,24 @@ def predict_phenotypes_for_cnv_strings(cnv_strings: list[str],
                                        geneset: GeneSet,
                                        comparison_database: ComparisonTable,
                                        chromosomes: Optional[Union[str, List[str]]] = None,
-                                       cnv_changes: Optional[Union[str, List[str]]] = None,
+                                       copy_numbers: Optional[Union[int, List[int]]] = None,
                                        length_similarity=0, loci_similarity=0,
                                        gene_similarity=0, hi_gene_similarity=0,
                                        dom_gene_match=True, hpo_similarity=0,
                                        pLI_threshold=0.9, HI_threshold=10,
                                        phaplo_threshold=0.86, mode="confirm",
-                                       tabulate=False):
-    """CNV string format is chr:start-stop:copy_number."""
+                                       tabulate=False, **kwargs):
+    """Predict phenotypes based on a list of strings containing CNV loci and copy numbers.
+
+    CNV string format is 'chr:start-stop:copy_number'. CNV objects will be created
+    automatically, and affected genes will be assigned."""
     cnvs = [_convert_cnv_str_to_cnv(cnv_string) for cnv_string in cnv_strings]
+    for cnv in cnvs:
+        cnv.set_genes(geneset)
     comparison_params = dict(
         comparison_database=comparison_database,
-        geneset=geneset,
         chromosomes=chromosomes,
-        cnv_changes=cnv_changes,
+        copy_numbers=copy_numbers,
         length_similarity=length_similarity, loci_similarity=loci_similarity,
         gene_similarity=gene_similarity, hi_gene_similarity=hi_gene_similarity,
         dom_gene_match=dom_gene_match, hpo_similarity=hpo_similarity,
