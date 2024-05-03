@@ -6,6 +6,7 @@
 """
 
 from math import log10
+from typing import Dict, List, Optional, Set, Union
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -16,6 +17,7 @@ from plotly.subplots import make_subplots
 import plotly.io as pio
 
 from chr6_project.analysis import network
+from chr6_project.analysis.data_objects import PatientDatabase, GenomeDict
 from chr6_project.analysis.utilities import overlap
 
 
@@ -91,7 +93,7 @@ def plot_individual_factors(comparison_table, percentage=True):
     """Plot scatterplots for similarity vs. shared HPO terms."""
     plotters = [intersect for intersect in comparison_table
                 if intersect.patients[0] != intersect.patients[1]
-                and intersect.patients[0].hpo and intersect.patients[1].hpo
+                and intersect.patients[0].phenotypes and intersect.patients[1].phenotypes
                 and intersect.patients[0].cnvs and intersect.patients[1].cnvs]
 
     # if percentage:
@@ -123,56 +125,43 @@ def plot_individual_factors(comparison_table, percentage=True):
     ax3.set_xlabel("Gene Similarity", fontsize=24)
 
 
-def make_cnv_histogram_info(patient_db, chromosome, genome_dict):
-    """Gather data on CNVs per megabase for a histogram."""
-    cnvs = patient_db.cnvs[chromosome]
-
-    bin_starts = range(1, genome_dict["6"].length, 1000000)
+def plot_cnv_coverage(patient_db: PatientDatabase, genome_dict: GenomeDict,
+                      chromosome: str,
+                      copy_numbers: Optional[Union[int, List[int]]] = None):
+    cnvs = patient_db.filter_cnvs(chromosomes=chromosome, copy_numbers=copy_numbers)
+    bin_starts = range(1, genome_dict[chromosome].length+1, 1000000)
     bin_counts = {range(bin_start, bin_start + 1000000): 0
                   for bin_start in bin_starts[:-1]}
-    bin_counts[range(bin_starts[-1], genome_dict["6"].length + 1)] = 0
+    bin_counts[range(bin_starts[-1], genome_dict[chromosome].length+1)] = 0
 
     for cnv in cnvs:
         for bin_range in bin_counts:
             if overlap(cnv.range, bin_range):
                 bin_counts[bin_range] += 1
-    return bin_counts
+
+    fig = go.Figure(go.Bar(x=list(bin_starts), y=list(bin_counts.values())))
+    fig.update_layout(title="CNV coverage per megabase",
+                      xaxis_title="Position", yaxis_title="CNV Count",
+                      bargap=0)
+    return fig
+
+# def test_plot(hist_info, thing):
+#     """Plot histogram of CNV coverage per megabase."""
+#     bins = [(x.start - 1)/1000000 for x in hist_info]
+#     heights = list(hist_info.values())
+#
+#     fig = go.Figure()
+#     fig.add_trace(go.Bar(x=bins, y=heights))
+#     fig.add_trace(go.Scatter(x=[x[1]/1e6 for x in thing],
+#                              y=[y[0] for y in thing],
+#                              mode="markers"))
+#     fig.show()
 
 
-def plot_cnv_histogram(hist_info):
-    """Plot histogram of CNV coverage per megabase."""
-    bins = [(x.start - 1)/1000000 for x in hist_info]
-    heights = list(hist_info.values())
-
-    # plt.bar(y_pos, performance, align='center', alpha=0.5)
-    plt.bar(bins, heights, align="center", alpha=0.5, color="seagreen")
-    plt.xticks(fontsize=30, fontname="Tahoma")
-    plt.yticks(fontsize=30, fontname="Tahoma")
-    plt.xlabel("Megabase", fontsize=36, fontname="Tahoma")
-    plt.ylabel("Count", fontsize=36, fontname="Tahoma")
-    plt.title("CNV coverage per chromosome 6 megabase",
-              fontsize=36, fontname="Tahoma")
-
-    plt.show()
-
-
-def test_plot(hist_info, thing):
-    """Plot histogram of CNV coverage per megabase."""
-    bins = [(x.start - 1)/1000000 for x in hist_info]
-    heights = list(hist_info.values())
-
-    fig = go.Figure()
-    fig.add_trace(go.Bar(x=bins, y=heights))
-    fig.add_trace(go.Scatter(x=[x[1]/1e6 for x in thing],
-                             y=[y[0] for y in thing],
-                             mode="markers"))
-    fig.show()
-
-
-def plot_phenotype_homogeneity_heatmap(phenohomo_data):
-    fig = px.imshow(phenohomo_data, aspect="auto")
-    fig.show()
-    return
+# def plot_phenotype_homogeneity_heatmap(phenohomo_data):
+#     fig = px.imshow(phenohomo_data, aspect="auto")
+#     fig.show()
+#     return
 
 
 # %% Group Size Plots
@@ -532,7 +521,7 @@ def plot_precision_stats(prediction_database, patient_database, phenotypes=None,
     params = (phenotypes, rel_threshold, abs_threshold, use_adjusted_frequency,
               group_size_threshold)
 
-    prediction_stats = prediction_database.calculate_individual_precision(*params)
+    prediction_stats = prediction_database.calculate_individual_precision()
     positions = [patient_database[patient].get_median_cnv_position("6", None)
                  for patient in prediction_stats]
     sizes = [prediction_database.predictions[patient].patient_group.size
@@ -593,7 +582,7 @@ def minimum_precision(comparison, phenotypes=None,
             hi_gene_similarity=hi_score,
             dom_gene_match=dom_gene_match
             )
-        stats = prediction_database.calculate_individual_precision(*params)
+        stats = prediction_database.calculate_individual_precision()
         stats = pd.DataFrame.from_dict(stats, orient="index")
 
         size = len(stats)

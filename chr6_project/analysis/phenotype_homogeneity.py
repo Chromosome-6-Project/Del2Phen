@@ -97,9 +97,9 @@ class HomogeneityDatabase:
         self.size = len(self.patient_group_prevalences)
 
     def sorted_by_chromosome(self, chromosome: str,
-                             cnv_changes: Optional[Union[str, List[str]]] = None):
+                             copy_numbers: Optional[Union[int, List[int]]] = None):
         sorted_prevs = sorted(self.patient_group_prevalences.values(),
-                              key=lambda x: x.patients.get_median_cnv_position(chromosome, cnv_changes))
+                              key=lambda x: x.patients.get_median_cnv_position(chromosome, copy_numbers))
         return sorted_prevs
 
     def calculate_all_homogeneities(self, rel_threshold=0.2, abs_threshold=2,
@@ -138,46 +138,6 @@ class HomogeneityDatabase:
             }
         table = pd.DataFrame.from_dict(table).transpose()
         return table
-
-
-# def make_phenotype_homogeneity_table(group_homogeneities, selected_hpos, rel_threshold, abs_threshold):
-#     pheno_data = {hpo: [] for hpo in selected_hpos}
-#     group_homogeneities = sorted(group_homogeneities.values(),
-#                                  key=lambda x: x.patients.get_median_cnv_position("6"))
-#     for group_homo in group_homogeneities:
-#         for pheno, homo in group_homo.homogeneities.items():
-#             pheno_data[pheno].append(homo)
-#     table = {phenotype.name:
-#                  {f"{homo.group_id} ({homo.group_size})": homo.relative_prevalence
-#                   for homo in homos}
-#              for phenotype, homos in pheno_data.items()}
-#     table["Phenotype Homogeneity"] = {
-#         f"{homo.group_id} ({homo.group_size})": homo.calculate_homogeneity(rel_threshold, abs_threshold)
-#         for homo in group_homogeneities
-#         }
-#     table = pd.DataFrame.from_dict(table).transpose()
-#     return table
-
-
-# def phenotype_homo_test(comparison, selected_hpos,
-#                         length_similarity, loci_similarity, gene_similarity,
-#                         hi_gene_similarity, hpo_similarity, group_size_threshold,
-#                         rel_threshold, abs_threshold):
-#     # if phenotypes is None:
-#     #     with open("/home/tyler/Documents/Chr6_docs/Phenotype_Homogeneity/selected_phenotypes_hpos.txt") as infile:
-#     #         selected_hpos = infile.readlines()
-#     #     selected_hpos = [ontology[x.strip().split("\t")[1]] for x in selected_hpos]
-#     # else:
-#     #     selected_hpos = phenotypes
-#     homos = comparison.calculate_all_patient_homogeneities(
-#         phenotypes=selected_hpos,
-#         length_similarity=length_similarity,
-#         loci_similarity=loci_similarity, gene_similarity=gene_similarity,
-#         hi_gene_similarity=hi_gene_similarity, hpo_similarity=hpo_similarity,
-#         group_size_threshold=group_size_threshold
-#         )
-#     table = make_phenotype_homogeneity_table(homos, selected_hpos, rel_threshold, abs_threshold)
-#     return table, homos
 
 
 def plot_phenotype_homogeneities(comparison, selected_hpos, hi_gene_similarity, abs_threshold):

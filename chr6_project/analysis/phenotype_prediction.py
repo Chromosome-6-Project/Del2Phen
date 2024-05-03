@@ -12,13 +12,12 @@ from chr6_project.analysis.plotting import plot_precision_stats
 
 class TraitPrediction:
     def __init__(self, trait, population, true, false,
-                 unsure, na, group=None):
+                 na, group=None):
         self.trait = trait
         self.group = group
         self.population = population
         self.true_count = true
         self.false_count = false
-        self.unsure_count = unsure
         self.na_count = na
         self._found = False
 
@@ -64,6 +63,7 @@ class TraitPrediction:
         return row
 
 
+# TODO: Add filter for patient prediction table with enough prevalence.
 class PatientPredictions:
     def __init__(self, patient, patient_group, predictions):
         self.patient = patient
@@ -73,12 +73,12 @@ class PatientPredictions:
     def __len__(self):
         return len(self.predictions)
 
-    def make_confusion_matrix(self, phenotypes=None, rel_threshold=0.2, abs_threshold=2,
+    def make_confusion_matrix(self, termset=None, rel_threshold=0.2, abs_threshold=2,
                               use_adjusted_frequency=True):
         predictions = self.predictions
-        if phenotypes is not None:
+        if termset is not None:
             predictions = {term: prediction for term, prediction in predictions.items()
-                           if term in phenotypes}
+                           if term in termset}
         confusion = np.zeros([2, 2])
 
         index = {term for term, prediction in predictions.items()
@@ -98,48 +98,60 @@ class PatientPredictions:
 
         return confusion
 
-    def convert_patient_predictions_to_df(self):
-        table = [prediction.make_table_row() for prediction in self.predictions.values()]
+    def convert_patient_predictions_to_df(self, termset=None, rel_threshold=0.2,
+                                          abs_threshold=2, use_adjusted_frequency=True):
+        predictions = [
+            prediction for prediction in self.predictions.values()
+            if all([
+                termset is None or prediction.trait in termset,
+                not use_adjusted_frequency or prediction.freq_adjusted >= rel_threshold,
+                use_adjusted_frequency or prediction.freq >= rel_threshold,
+                prediction.true_count >= abs_threshold])
+            ]
+        table = [prediction.make_table_row() for prediction in predictions]
+        if not table:
+            return pd.DataFrame()
         column_labels = [key.title() for key in table[0]]
         table = pd.DataFrame(table)
         table.columns = column_labels
         return table
 
 
+# TODO: Add filter for patients with minimum connections.
 class PredictionDatabase:
     def __init__(self, patient_predictions):
         self.predictions = patient_predictions
 
-    def make_overall_confusion_matrix(self, phenotypes=None, rel_threshold=0.2,
+    def make_overall_confusion_matrix(self, termset=None, rel_threshold=0.2,
                                       abs_threshold=2, use_adjusted_frequency=True,
                                       group_size_threshold=5):
-        params = (phenotypes, rel_threshold, abs_threshold, use_adjusted_frequency)
+        params = (termset, rel_threshold, abs_threshold, use_adjusted_frequency)
         matrices = []
         for prediction in self.predictions.values():
             if prediction.patient_group.size < group_size_threshold:
                 continue
-            matrices.append(prediction.make_confusion_matrix(*params))
+            matrices.append(prediction.make_confusion_matrix())
         matrix = sum(matrices)
         return matrix
 
-    def make_individual_confusion_matrices(self, phenotypes=None, rel_threshold=0.2,
+    def make_individual_confusion_matrices(self, termset=None, rel_threshold=0.2,
                                            abs_threshold=2, use_adjusted_frequency=True,
                                            group_size_threshold=5):
-        params = (phenotypes, rel_threshold, abs_threshold, use_adjusted_frequency)
+        params = (termset, rel_threshold, abs_threshold, use_adjusted_frequency)
         matrices = {
-            patient: predict.make_confusion_matrix(*params)
+            patient: predict.make_confusion_matrix()
             for patient, predict in self.predictions.items()
             if predict.patient_group.size >= group_size_threshold}
         return matrices
 
-    def calculate_individual_precision(self, phenotypes=None, rel_threshold=0.2,
+    def calculate_individual_precision(self, termset=None, rel_threshold=0.2,
                                        abs_threshold=2, use_adjusted_frequency=True,
                                        group_size_threshold=5):
-        params = (phenotypes, rel_threshold, abs_threshold, use_adjusted_frequency,
+        params = (termset, rel_threshold, abs_threshold, use_adjusted_frequency,
                   group_size_threshold)
         stat_names = ("Sensitivity", "Specificity", "PPV", "NPV")
         precision_stats = {}
-        for patient, mat in self.make_individual_confusion_matrices(*params).items():
+        for patient, mat in self.make_individual_confusion_matrices().items():
             margins = list(mat.sum(1)) + list(mat.sum(0))
             # The mod here just makes it convenient to divide the relevant matrix cells
             # by their respective margins from the list above.
@@ -148,23 +160,24 @@ class PredictionDatabase:
             precision_stats[patient] = dict(zip(stat_names, patient_stats))
         return precision_stats
 
-    def make_individual_precision_table(self, phenotypes=None, rel_threshold=0.2,
+    def make_individual_precision_table(self, termset=None, rel_threshold=0.2,
                                         abs_threshold=2, use_adjusted_frequency=True,
-                                        group_size_threshold=5):
-        precisions = self.calculate_individual_precision(phenotypes, rel_threshold,
-                                                         abs_threshold, use_adjusted_frequency,
+                                        group_size_threshold=5, **kwargs):
+        precisions = self.calculate_individual_precision(termset, rel_threshold,
+                                                         abs_threshold,
+                                                         use_adjusted_frequency,
                                                          group_size_threshold)
         for pid in precisions.keys():
             precisions[pid]["Group_Size"] = self.predictions[pid].patient_group.size
         table = pd.DataFrame.from_dict(precisions, orient="index")
         return table
 
-    def calculate_overall_precision(self, phenotypes=None, rel_threshold=0.2,
+    def calculate_overall_precision(self, termset=None, rel_threshold=0.2,
                                     abs_threshold=2, use_adjusted_frequency=True,
                                     group_size_threshold=5):
-        params = (phenotypes, rel_threshold, abs_threshold, group_size_threshold,
+        params = (termset, rel_threshold, abs_threshold, group_size_threshold,
                   use_adjusted_frequency)
-        confusion = self.make_overall_confusion_matrix(*params)
+        confusion = self.make_overall_confusion_matrix()
         stat_names = ("Sensitivity", "Specificity", "PPV", "NPV")
         margins = list(confusion.sum(1)) + list(confusion.sum(0))
         stats = [cell / margins[i] if (cell := confusion[i % 2][i % 2]) > 0 else 0
@@ -172,14 +185,27 @@ class PredictionDatabase:
         stats = dict(zip(stat_names, stats))
         return stats
 
-    def plot_precision_stats(self, patient_database, phenotypes=None, rel_threshold=0.2,
+    def plot_precision_stats(self, patient_database, termset=None, rel_threshold=0.2,
                              abs_threshold=2, use_adjusted_frequency=True,
                              group_size_threshold=5):
-        precision_plot = plot_precision_stats(self, patient_database, phenotypes,
+        precision_plot = plot_precision_stats(self, patient_database, termset,
                                               rel_threshold, abs_threshold,
                                               use_adjusted_frequency,
                                               group_size_threshold)
         return precision_plot
+
+    def write_all_predictions(self, output_dir, termset=None, rel_threshold=0.2,
+                              abs_threshold=2, use_adjusted_frequency=True,
+                              group_size_threshold=5, **kwargs):
+        for pid, patient_prediction in self.predictions.items():
+            if patient_prediction.patient_group.size < group_size_threshold:
+                continue
+            table = patient_prediction.convert_patient_predictions_to_df(
+                termset=termset, rel_threshold=rel_threshold,
+                abs_threshold=abs_threshold,
+                use_adjusted_frequency=use_adjusted_frequency
+                )
+            table.to_csv(f"{output_dir}/{pid}.tsv", sep="\t")
 
 
 def predict_test(comparison, patient_list="C:/Users/Ty/Documents/Chr6/Predict_tests/test_patients.txt"):
