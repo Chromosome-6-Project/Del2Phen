@@ -110,8 +110,8 @@ def analyze(genotypes, phenotypes, drop_list_file=None, custom_phenotype_file=No
 
     print("Reading patient phenotypes...")
     phenotypes = pd.read_csv(phenotypes, sep="\t",
-                             true_values=["T", "t", 1],
-                             false_values=["F", "f", 0],
+                             true_values=["T", "t", "1"],
+                             false_values=["F", "f", "0"],
                              na_values=[
             "Unsure"])
 
