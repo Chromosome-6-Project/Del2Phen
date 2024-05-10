@@ -84,16 +84,16 @@ def _setup_argparser():
         )
     filtering_args.add_argument(
         "-c", "--included-contigs", type=str,
-        dest="chromosomes",
-        help="Comma-separated list of contig names to be included in analysis. Only "
+        dest="chromosomes", nargs="+",
+        help="Space-separated list of contig names to be included in analysis. Only "
              "CNVs on these contigs will be analyzed. Any cases without CNVs on any of "
              "these contigs are removed before analysis, unless --keep-uncompared is "
              "used. Default behavior is to analyze all contigs."
         )
     filtering_args.add_argument(
         "-cn", "--included-copy-numbers", type=int,
-        dest="copy_numbers",
-        help="Comma-separated list of CNV copy number integers to be included in "
+        dest="copy_numbers", nargs="+",
+        help="Space-separated list of CNV copy number integers to be included in "
              "analysis. Only CNVs with one of the listed copy numbers will be "
              "analyzed. Any cases without any CNVs of the listed copy number are "
              "removed before analysis, unless --keep-uncompared is used. Default "
@@ -118,7 +118,7 @@ def _setup_argparser():
         "--keep-unphenotyped", action="store_true",
         default=False,
         help="Include cases that have no phenotype information, but who have CNV "
-             "information. Default behavior is to ignoreany cases that do not have "
+             "information. Default behavior is to ignore any cases that do not have "
              "both CNV and phenotype information."
         )
     filtering_args.add_argument(
@@ -208,7 +208,7 @@ def _setup_argparser():
              "for the phenotype to be considered 'predicted'. Default=0.2"
         )
     prediction_args.add_argument(
-        "--ignore_nas", action="store_true", dest="use_adjusted_frequency",
+        "--ignore-nas", action="store_true", dest="use_adjusted_frequency",
         help="When calculating relative frequency, ignore NA phenotype responses when "
              "calculating the denominator, i.e., only consider True/(True+False) "
              "instead of True/(True+False+NA)."
@@ -228,8 +228,8 @@ def _setup_argparser():
     output_args.add_argument(
         "-os", "--output-stats",
         help="TSV file where prediction accuracy metrics will be written. Must be "
-             "specified to produce stats file. No stats will be produced if "
-             "--cnv-query-only is specified."
+             "specified to produce stats file. Ignored and no stats will be produced "
+             " if --cnv-query-only is also specified."
         )
     output_args.add_argument(
         "-cnv", "--cnv-predict", nargs="+", action="extend",
