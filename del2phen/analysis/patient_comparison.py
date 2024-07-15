@@ -563,7 +563,7 @@ def predict_phenotypes_for_patient(patient: Patient, comparison_database: Compar
                                    dom_gene_match=True, hpo_similarity=0,
                                    pLI_threshold=0.9, HI_threshold=10,
                                    phaplo_threshold=0.86, mode="confirm",
-                                   tabulate=False):
+                                   tabulate=False, **kwargs):
     """Predict phenotypes for a patient objects with CNVs."""
     params = dict(chromosomes=chromosomes, copy_numbers=copy_numbers,
                   pLI_threshold=pLI_threshold, HI_threshold=HI_threshold,
@@ -581,7 +581,7 @@ def predict_phenotypes_for_patient(patient: Patient, comparison_database: Compar
     predictions = comparison_database.predict_group_phenotypes(group, show=0)
     predictions = PatientPredictions(patient.id, group, predictions)
     if tabulate:
-        predictions = predictions.convert_patient_predictions_to_df()
+        predictions = predictions.convert_patient_predictions_to_df(**kwargs)
         return predictions
     return predictions
 
@@ -595,7 +595,7 @@ def predict_phenotypes_for_cnvs(cnvs: list[CNV],
                                 dom_gene_match=True, hpo_similarity=0,
                                 pLI_threshold=0.9, HI_threshold=10,
                                 phaplo_threshold=0.86, mode="confirm",
-                                tabulate=False):
+                                tabulate=False, **kwargs):
     """Predict phenotypes based on a list of CNV objects.
 
     CNVs must already have affected genes assigned."""
@@ -612,7 +612,7 @@ def predict_phenotypes_for_cnvs(cnvs: list[CNV],
         )
     patient = Patient("query")
     patient.cnvs = cnvs
-    predictions = predict_phenotypes_for_patient(patient, **comparison_params)
+    predictions = predict_phenotypes_for_patient(patient, **comparison_params, **kwargs)
     return predictions
 
 
@@ -653,5 +653,5 @@ def predict_phenotypes_for_cnv_strings(cnv_strings: list[str],
         phaplo_threshold=phaplo_threshold, mode=mode,
         tabulate=tabulate
         )
-    predictions = predict_phenotypes_for_cnvs(cnvs, **comparison_params)
+    predictions = predict_phenotypes_for_cnvs(cnvs, **comparison_params, **kwargs)
     return predictions
