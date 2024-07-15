@@ -602,7 +602,7 @@ def read_geneset_info(gtf_file, pli_file=None, hi_file=None, phaplo_file=None,
                          "annotate_dominant_genes"))
     elif dominant_gene_list is not None:
         commands.append((dominant_gene_list, list, "annotate_dominant_genes"))
-    for data, (read, add) in commands:
+    for data, read, add in commands:
         if data is None:
             continue
         data = read(data)
