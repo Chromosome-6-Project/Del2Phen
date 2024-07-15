@@ -9,7 +9,7 @@ import pandas as pd
 
 from del2phen.analysis.patient_comparison import ComparisonTable
 from del2phen.analysis.data_objects import PatientDatabase, Patient, CNV
-from del2phen.analysis.gene_set import GeneSet, make_geneset, read_geneset_gtf
+from del2phen.analysis.gene_set import GeneSet, make_default_geneset, read_geneset_info
 import del2phen.analysis.hpo as c6_hpo
 
 
@@ -84,6 +84,8 @@ def analyze(genotypes, phenotypes, drop_list_file=None, custom_phenotype_file=No
             phenotype_termset_yaml=None, expand_hpo_terms=False, keep_ungenotyped=False,
             keep_unphenotyped=False, keep_uncompared=False,
             pLI_threshold=0.9, HI_threshold=10, phaplo_threshold=0.86, mode="confirm",
+            gtf_file=None, pli_file=None, hi_file=None, phaplo_file=None,
+            dominant_gene_file=None, dominant_gene_list=None,
             **kwargs):
 
     # TODO: Add verbosity argument.
@@ -95,7 +97,12 @@ def analyze(genotypes, phenotypes, drop_list_file=None, custom_phenotype_file=No
 
     # Build chr6 GeneSet only from source GTF file (gzipped) (slow, large file)
     # and add pLI and HI info automatically from default sources:
-    geneset = make_geneset()
+    if all(param is None for param in [gtf_file, pli_file, hi_file, phaplo_file]):
+        geneset = make_default_geneset(dominant_gene_file=dominant_gene_file,
+                                       dominant_gene_list=dominant_gene_list)
+    else:
+        geneset = read_geneset_info(gtf_file, pli_file, hi_file, phaplo_file,
+                                    dominant_gene_file, dominant_gene_list)
 
     # Or, load pre-made GeneSet from pickle (faster, large file):
     # with open("GeneSets/hg19.ensGene.pkl", "rb") as infile:

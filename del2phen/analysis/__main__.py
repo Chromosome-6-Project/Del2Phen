@@ -155,16 +155,18 @@ def _setup_argparser():
              "threshold of 1 HI score when only 1 is known. Default: confirm"
         )
     gene_args.add_argument(
-        "-de", "--dominant-effect-genes",
-        help="Comma-separated list of gene IDs to treat as fully penetrant. A full "
-             "match of these genes in CNV gene content can be set to be required for "
-             "group membership in the comparative analysis."
+        "-de", "--dominant-effect-genes", dest="dominant_gene_list", nargs="+",
+        help="Space-separated list of gene IDs to treat as fully penetrant. By default, "
+             "a full match of these genes in CNV gene content is required for group "
+             "membership in the comparative analysis. This behavior can be disabled "
+             "using --allow-de-gene-mismatch."
         )
     gene_args.add_argument(
-        "--de-list",
-        help="Text file listing gene IDs to treat as fully penetrant. A full match of "
-             "these genes in CNV gene content can be set to be required for group "
-             "membership in the comparative analysis."
+        "--de-list", dest="dominant_gene_file",
+        help="Text file listing gene IDs to treat as fully penetrant. By default, "
+             "a full match of these genes in CNV gene content is required for group "
+             "membership in the comparative analysis. This behavior can be disabled "
+             "using --allow-de-gene-mismatch."
         )
 
     # Comparison threshold arguments.
@@ -245,6 +247,25 @@ def _setup_argparser():
         help="Output predictions only for CNVs specified using --cnv-predict, and not "
              "patients/CNVs present in --genotypes."
         )
+
+    # Reference.
+    reference_args = parser.add_argument_group(
+        title="Reference Arguments",
+        description="Arguments to override the default reference files used for "
+                    "analysis. NOTE: Using any of the following arguments will disable "
+                    "the defaults for all four reference files to prevent accidental "
+                    "application of incorrect values. See README for more information.")
+    reference_args.add_argument("--gtf_file",
+                                help="File path to a GTF format file containing gene "
+                                     "information to construct the gene set for "
+                                     "analysis.")
+    reference_args.add_argument("--pli_file",
+                                help="File path to a gnomad file containing pLI gene "
+                                     "info.")
+    reference_args.add_argument("--hi_file",
+                                help="File path to a file containing HI gene info.")
+    reference_args.add_argument("--phaplo_file",
+                                help="File path to a file containing pHaplo gene info.")
 
     return parser
 

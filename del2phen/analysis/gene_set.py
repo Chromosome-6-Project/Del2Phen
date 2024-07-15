@@ -463,7 +463,7 @@ def read_phaplo_gene_data(file):
     return data
 
 
-def read_dominant_gene_list(file):
+def read_dominant_gene_file(file):
     with open(file) as infile:
         gene_list = infile.readlines()
     gene_list = [gene.strip() for gene in gene_list]
@@ -591,36 +591,76 @@ def is_haploinsufficient(gene, pLI_threshold=0.9, HI_threshold=10,
 
 
 # %% Main
-def _read_defaults():
-    geneset = list(pkg_resources.path(resources, "hg19.ensGene.chr6.gtf.gz").gen)[0]
-    pli = list(pkg_resources.path(resources, "gnomad.v2.1.1.lof_metrics.by_gene.6.tsv").gen)[0]
-    hi = list(pkg_resources.path(resources, "HI_Predictions.v3.chr6.bed").gen)[0]
-    phaplo = list(pkg_resources.path(resources, "phaplo_scores.chr6.tsv").gen)[0]
-    dom = list(pkg_resources.path(resources, "dominant_genes.txt").gen)[0]
-    pli_genes = read_gnomad_pli_data(pli)
-    phaplo_genes = read_phaplo_gene_data(phaplo)
-    hi_genes = make_hi_genes(hi)
-    dominant_genes = read_dominant_gene_list(dom)
-    return geneset, pli_genes, hi_genes, phaplo_genes, dominant_genes
-
-
-def read_geneset_gtf(geneset_gtf):
-    """Load geneset."""
-    _, pli_genes, hi_genes, phaplo_genes, dominant_genes = _read_defaults()
-    geneset = GeneSet(geneset_gtf)
-    geneset.add_pLI_scores(pli_genes)
-    geneset.add_HI_scores(hi_genes)
-    geneset.add_phaplo_scores(phaplo_genes)
-    geneset.annotate_dominant_genes(dominant_genes)
+def read_geneset_info(gtf_file, pli_file=None, hi_file=None, phaplo_file=None,
+                      dominant_gene_file=None, dominant_gene_list=None):
+    geneset = GeneSet(gtf_file)
+    commands = [(pli_file, read_gnomad_pli_data, "add_pLI_scores"),
+                (hi_file, make_hi_genes, "add_HI_scores"),
+                (phaplo_file, read_phaplo_gene_data, "add_phaplo_scores")]
+    if dominant_gene_file is not None:
+        commands.append((dominant_gene_file, read_dominant_gene_file,
+                         "annotate_dominant_genes"))
+    elif dominant_gene_list is not None:
+        commands.append((dominant_gene_list, list, "annotate_dominant_genes"))
+    for data, (read, add) in commands:
+        if data is None:
+            continue
+        data = read(data)
+        geneset.__getattribute__(add)(data)
     return geneset
 
 
-def make_geneset():
-    """Load geneset."""
-    geneset, pli_genes, hi_genes, phaplo_genes, dominant_genes = _read_defaults()
-    geneset = GeneSet(geneset)
-    geneset.add_pLI_scores(pli_genes)
-    geneset.add_HI_scores(hi_genes)
-    geneset.add_phaplo_scores(phaplo_genes)
-    geneset.annotate_dominant_genes(dominant_genes)
+def _get_default_path(file_name):
+    file_path = list(pkg_resources.path(resources, file_name).gen)[0]
+    return file_path
+
+
+def _get_default_paths():
+    file_names = ["hg19.ensGene.chr6.gtf.gz", "gnomad.v2.1.1.lof_metrics.by_gene.6.tsv",
+                  "HI_Predictions.v3.chr6.bed", "phaplo_scores.chr6.tsv",
+                  "dominant_genes.txt"]
+    file_keys = ["geneset", "pli_file", "hi_file", "phaplo_file", "dominant_gene_file"]
+    file_paths = {file_key: _get_default_path(file_name) for file_key, file_name
+                  in zip(file_keys, file_names)}
+    return file_paths
+    # geneset, pli_file, hi_file, phaplo_file, dominant_gene_file = file_paths
+    # return geneset, pli_file, hi_file, phaplo_file, dominant_gene_file
+    # geneset = list(pkg_resources.path(resources, "hg19.ensGene.chr6.gtf.gz").gen)[0]
+    # pli = list(pkg_resources.path(resources, "gnomad.v2.1.1.lof_metrics.by_gene.6.tsv").gen)[0]
+    # hi = list(pkg_resources.path(resources, "HI_Predictions.v3.chr6.bed").gen)[0]
+    # phaplo = list(pkg_resources.path(resources, "phaplo_scores.chr6.tsv").gen)[0]
+    # dom = list(pkg_resources.path(resources, "dominant_genes.txt").gen)[0]
+
+
+def make_default_geneset(dominant_gene_file=None, dominant_gene_list=None):
+    default_paths = _get_default_paths()
+    if dominant_gene_file is not None:
+        default_paths["dominant_gene_file"] = dominant_gene_file
+    elif dominant_gene_list is not None:
+        default_paths["dominant_gene_list"] = dominant_gene_list
+    geneset = read_geneset_info(**default_paths)
+    # geneset = read_geneset_info(*_get_default_paths(), dominant_gene_list=None)
     return geneset
+    # geneset, pli_genes, hi_genes, phaplo_genes, dominant_genes = _get_default_paths()
+    # pli_genes = read_gnomad_pli_data(pli)
+    # phaplo_genes = read_phaplo_gene_data(phaplo)
+    # hi_genes = make_hi_genes(hi)
+    # dominant_genes = read_dominant_gene_file(dom)
+    # return geneset, pli_genes, hi_genes, phaplo_genes, dominant_genes
+
+
+# def make_default_geneset(dominant_gene_file=None, dominant_gene_list=None):
+#     """Load geneset."""
+#     geneset, pli_genes, hi_genes, phaplo_genes, dominant_genes = _get_default_paths()
+#     geneset = GeneSet(geneset)
+#     geneset.add_pLI_scores(pli_genes)
+#     geneset.add_HI_scores(hi_genes)
+#     geneset.add_phaplo_scores(phaplo_genes)
+#     if dominant_gene_file is not None:
+#         dominant_genes = read_dominant_gene_file(dominant_gene_file)
+#     elif dominant_gene_list is not None:
+#         dominant_genes = dominant_genes
+#     geneset.annotate_dominant_genes(dominant_genes)
+#     return geneset
+
+
