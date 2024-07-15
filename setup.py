@@ -6,7 +6,7 @@ with open("README.md", "r") as fh:
 
 setup(
     name="Del2Phen",
-    version="0.0.2",
+    version="2024.7.15",
     author="T.D. Medina",
     author_email="tylerdanmedina@gmail.com",
     description="Del2Phen, a tool to predict phenotypes associated with copy-number "
@@ -20,7 +20,7 @@ setup(
               "del2phen.resources"],
     # package_dir={"": "del2phen"},
     package_data={"del2phen.resources": ["*"], "del2phen.dashboard": ["assets/*"]},
-    python_requires=">=3.9",
+    python_requires=">=3.9, !=3.10",
     install_requires=[
         "dash",
         "dash-bootstrap-components",
