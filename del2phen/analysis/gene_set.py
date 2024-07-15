@@ -619,7 +619,7 @@ def _get_default_paths():
     file_names = ["hg19.ensGene.chr6.gtf.gz", "gnomad.v2.1.1.lof_metrics.by_gene.6.tsv",
                   "HI_Predictions.v3.chr6.bed", "phaplo_scores.chr6.tsv",
                   "dominant_genes.txt"]
-    file_keys = ["geneset", "pli_file", "hi_file", "phaplo_file", "dominant_gene_file"]
+    file_keys = ["gtf_file", "pli_file", "hi_file", "phaplo_file", "dominant_gene_file"]
     file_paths = {file_key: _get_default_path(file_name) for file_key, file_name
                   in zip(file_keys, file_names)}
     return file_paths
