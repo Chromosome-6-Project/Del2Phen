@@ -68,19 +68,19 @@ def _setup_argparser():
              "in the --phenotypes file header."
         )
 
-    data_args.add_argument(
-        "--expand-hpos", dest="expand_hpo_terms",
-        help="Recursively add parent HPO terms to each case based on presence of child "
-             "HPO terms."
-        )
+    # data_args.add_argument(
+    #     "--expand-hpos", dest="expand_hpo_terms",
+    #     help="Recursively add parent HPO terms to each case based on presence of child "
+    #          "HPO terms."
+    #     )
 
     # Filtering.
     filtering_args = parser.add_argument_group(title="Filtering")
     filtering_args.add_argument(
         "-d", "--drop-list", dest="drop_list_file",
-        help="Text file listing case IDs to skip, formatted with one IDper line. Empty "
-             "lines are allowed and lines beginningwith '#' are skipped. Cases listed "
-             "will not be includedin the set of cases analyzed."
+        help="Text file listing case IDs to skip, formatted with one ID per line. Empty "
+             "lines are allowed and lines beginning with '#' are skipped. Cases listed "
+             "will not be included in the set of cases analyzed."
         )
     filtering_args.add_argument(
         "-c", "--included-contigs", type=str,
@@ -109,21 +109,18 @@ def _setup_argparser():
 
     filtering_args.add_argument(
         "--keep-ungenotyped", action="store_true",
-        default=False,
         help="Include cases that have no listed CNVs, but who are still listed in the "
              "phenotype file. Default behavior is to ignore any cases that do not have "
              "both CNV and phenotype information."
         )
     filtering_args.add_argument(
         "--keep-unphenotyped", action="store_true",
-        default=False,
         help="Include cases that have no phenotype information, but who have CNV "
              "information. Default behavior is to ignore any cases that do not have "
              "both CNV and phenotype information."
         )
     filtering_args.add_argument(
         "--keep-uncompared", action="store_true",
-        default=False,
         help="Include cases that will not be compared due to not having a CNV of a "
              "listed CNV type on a listed contig. Cases will not be included in "
              "comparative analysis, but will be included in summary statistics."
@@ -132,13 +129,11 @@ def _setup_argparser():
     # Gene settings.
     gene_args = parser.add_argument_group(title="Gene Arguments")
     gene_args.add_argument(
-        "-pli", "--pli-threshold", dest="pLI_threshold",
-        default=0.9,
+        "-pli", "--pli-threshold", dest="pLI_threshold", default=0.9,
         help="Set minimum pLI threshold for defining HI genes. Default: 0.9"
         )
     gene_args.add_argument(
-        "-hi", "--hi-threshold", dest="HI_threshold",
-        default=10,
+        "-hi", "--hi-threshold", dest="HI_threshold", default=10,
         help="Set maximum HI Score threshold for defining HI genes. Default: 10"
         )
     gene_args.add_argument(
@@ -170,28 +165,28 @@ def _setup_argparser():
         )
 
     # Comparison threshold arguments.
-    sim_tresholds = parser.add_argument_group(
+    sim_thresholds = parser.add_argument_group(
         title="Similarity Thresholds",
         description="CNV similarity thresholds. Each metric is used to filter patient "
                     "subgroups based on Jaccard index similarity score between 0 and 1."
         )
-    sim_tresholds.add_argument(
+    sim_thresholds.add_argument(
         "--length-sim", dest="length_similarity", default=0, type=float,
         help="CNV similarity by combined raw length of affected loci."
         )
-    sim_tresholds.add_argument(
+    sim_thresholds.add_argument(
         "--loci-sim", dest="loci_similarity", default=0, type=float,
         help="CNV similarity by total overlap of affected loci."
         )
-    sim_tresholds.add_argument(
+    sim_thresholds.add_argument(
         "--gene-sim", dest="gene_similarity", default=0, type=float,
         help="CNV similarity by all genes overlapping affected loci."
         )
-    sim_tresholds.add_argument(
+    sim_thresholds.add_argument(
         "--hi-gene-sim", dest="hi_gene_similarity", default=0, type=float,
         help="CNV similarity by all haploinsufficient genes overlapping affected loci."
         )
-    sim_tresholds.add_argument(
+    sim_thresholds.add_argument(
         "--allow-de-gene-mismatch", dest="dom_gene_match", action="store_false",
         help="Allow patients to form groups when dominant effects genes do not match. "
              "Default behavior is to only group patients when they have matching "
