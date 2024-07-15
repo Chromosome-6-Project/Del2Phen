@@ -99,7 +99,8 @@ class PatientPredictions:
         return confusion
 
     def convert_patient_predictions_to_df(self, termset=None, rel_threshold=0.2,
-                                          abs_threshold=2, use_adjusted_frequency=True):
+                                          abs_threshold=2, use_adjusted_frequency=True,
+                                          **kwargs):
         predictions = [
             prediction for prediction in self.predictions.values()
             if all([
