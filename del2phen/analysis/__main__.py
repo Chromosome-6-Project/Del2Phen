@@ -154,14 +154,14 @@ def _setup_argparser():
         help="Space-separated list of gene IDs to treat as fully penetrant. By default, "
              "a full match of these genes in CNV gene content is required for group "
              "membership in the comparative analysis. This behavior can be disabled "
-             "using --allow-de-gene-mismatch."
+             "using --allow-de-gene-mismatch. Overriden by --de-file."
         )
     gene_args.add_argument(
-        "--de-list", dest="dominant_gene_file",
+        "--de-file", dest="dominant_gene_file",
         help="Text file listing gene IDs to treat as fully penetrant. By default, "
              "a full match of these genes in CNV gene content is required for group "
              "membership in the comparative analysis. This behavior can be disabled "
-             "using --allow-de-gene-mismatch."
+             "using --allow-de-gene-mismatch. Overrides the -de argument."
         )
 
     # Comparison threshold arguments.
@@ -250,16 +250,16 @@ def _setup_argparser():
                     "analysis. NOTE: Using any of the following arguments will disable "
                     "the defaults for all four reference files to prevent accidental "
                     "application of incorrect values. See README for more information.")
-    reference_args.add_argument("--gtf_file",
+    reference_args.add_argument("--gtf-file",
                                 help="File path to a GTF format file containing gene "
                                      "information to construct the gene set for "
                                      "analysis.")
-    reference_args.add_argument("--pli_file",
+    reference_args.add_argument("--pli-file",
                                 help="File path to a gnomad file containing pLI gene "
                                      "info.")
-    reference_args.add_argument("--hi_file",
+    reference_args.add_argument("--hi-file",
                                 help="File path to a file containing HI gene info.")
-    reference_args.add_argument("--phaplo_file",
+    reference_args.add_argument("--phaplo-file",
                                 help="File path to a file containing pHaplo gene info.")
 
     return parser
